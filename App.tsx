@@ -1,123 +1,161 @@
-import React, { useState } from 'react';
-import { PhotoAgentModal } from './components/PhotoAgentModal';
-import { GeneratedPromptCard } from './components/GeneratedPromptCard';
-import type { PhotoAgentData } from './types';
-import { generatePrompts } from './services/geminiService';
-import { Input } from './components/ui/Input';
-import { Label } from './components/ui/Label';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { Header } from './components/Header';
+import { ModelSelector } from './components/ModelSelector';
+import { AspectRatioSelector } from './components/AspectRatioSelector';
+import { ImageCountSelector } from './components/ImageCountSelector';
+import { PromptInput } from './components/PromptInput';
+import { ImageGallery } from './components/ImageGallery';
+import { generateImages } from './services/geminiService';
+import type { ModelType, AspectRatio, GenerationSession } from './types';
 
 const App: React.FC = () => {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [productName, setProductName] = useState("");
-  const [generatedPrompts, setGeneratedPrompts] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [promptsVisible, setPromptsVisible] = useState(false);
+  const [model, setModel] = useState<ModelType>('FLASH');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+  const [imageCount, setImageCount] = useState(1);
+  const [sessions, setSessions] = useState<GenerationSession[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const galleryRef = useRef<HTMLDivElement>(null);
 
-  const handleOpenModal = () => setIsModalOpen(true);
-  const handleCloseModal = () => setIsModalOpen(false);
-
-  const handleSubmit = async (data: PhotoAgentData) => {
-    handleCloseModal();
-    setIsLoading(true);
-    setError(null);
-    setGeneratedPrompts([]);
-    setPromptsVisible(false);
-    try {
-      const prompts = await generatePrompts({ ...data, productName });
-      setGeneratedPrompts(prompts);
-      setTimeout(() => setPromptsVisible(true), 100);
-    } catch (err: any) {
-      setError(err.message || "Falha ao gerar os prompts. Tente novamente.");
-      console.error(err);
-    } finally {
-      setIsLoading(false);
+  // Scroll to top of gallery when new session is added
+  useEffect(() => {
+    if (sessions.length > 0 && galleryRef.current) {
+      galleryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-  };
+  }, [sessions.length]);
+
+  const handleGenerate = useCallback(
+    async (prompt: string) => {
+      const sessionId = crypto.randomUUID();
+      const config = {
+        model,
+        prompt,
+        aspectRatio,
+        numberOfImages: imageCount,
+      };
+
+      // Add generating session
+      const newSession: GenerationSession = {
+        id: sessionId,
+        config,
+        images: [],
+        timestamp: Date.now(),
+        status: 'generating',
+      };
+
+      setSessions((prev) => [...prev, newSession]);
+      setIsGenerating(true);
+
+      try {
+        const images = await generateImages(config);
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === sessionId
+              ? { ...s, images, status: 'completed' as const }
+              : s
+          )
+        );
+      } catch (error: any) {
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === sessionId
+              ? {
+                  ...s,
+                  status: 'error' as const,
+                  error: error.message || 'Erro desconhecido ao gerar imagens',
+                }
+              : s
+          )
+        );
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [model, aspectRatio, imageCount]
+  );
+
+  const modelColor = model === 'PRO' ? 'amber' : 'cyan';
 
   return (
-    <div className="min-h-screen flex flex-col items-center p-4 sm:p-8">
-      <div className="w-full max-w-4xl mx-auto">
-        <header className="text-center mb-12">
-            <h1 className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-500 pb-2" style={{ textShadow: '0 0 15px rgba(192, 132, 252, 0.2)' }}>
-                Gerador de Prompts Estratégicos
-            </h1>
-            <p className="mt-4 text-lg text-slate-400 max-w-2xl mx-auto">
-                Use nosso agente de IA para criar prompts de imagem de alta conversão para seu produto.
-            </p>
-        </header>
+    <div className="min-h-screen flex flex-col bg-gray-950">
+      <Header />
 
-        <main className="bg-gray-900/60 backdrop-blur-md p-6 sm:p-8 rounded-2xl shadow-2xl border border-gray-700/50">
-            <div className="space-y-6">
-                <div className="space-y-2">
-                    <Label htmlFor="product-name" className="text-lg font-semibold text-slate-200">
-                        Qual é o seu produto?
-                    </Label>
-                    <p className="text-sm text-slate-400">
-                        Comece informando o nome do produto para o qual você deseja gerar os prompts.
-                    </p>
-                    <Input
-                        id="product-name"
-                        placeholder="Ex: Tinta Acrílica Fosca Premium Vermelho Intenso"
-                        value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
-                        className="text-lg p-4 h-auto mt-2"
-                    />
-                </div>
-                <div className="text-center pt-2">
-                    <button
-                        onClick={handleOpenModal}
-                        disabled={!productName.trim() || isLoading}
-                        className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold py-3 px-8 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-[0_0_20px_rgba(124,58,237,0.4)] hover:shadow-[0_0_30px_rgba(124,58,237,0.6)] focus:outline-none focus:ring-4 focus:ring-purple-500/50 disabled:from-gray-700 disabled:to-gray-800 disabled:shadow-none disabled:text-slate-400 disabled:cursor-not-allowed disabled:scale-100"
-                    >
-                        Iniciar Agente de IA
-                    </button>
-                </div>
+      <main className="flex-1 flex flex-col max-w-lg mx-auto w-full">
+        {/* Controls Section */}
+        <div className="px-4 pt-4 pb-2 flex flex-col gap-4">
+          {/* Model Selector */}
+          <ModelSelector
+            selectedModel={model}
+            onModelChange={setModel}
+            disabled={isGenerating}
+          />
+
+          {/* Config Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowConfig(!showConfig)}
+            className="flex items-center justify-between w-full px-3 py-2 rounded-lg bg-gray-900/60 border border-gray-800 text-xs text-slate-400 hover:text-slate-300 hover:border-gray-700 transition-all"
+          >
+            <span className="font-semibold uppercase tracking-wider">
+              Configuracoes &middot; {aspectRatio} &middot; {imageCount}{' '}
+              {imageCount === 1 ? 'imagem' : 'imagens'}
+            </span>
+            <svg
+              className={`w-4 h-4 transition-transform duration-300 ${
+                showConfig ? 'rotate-180' : ''
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M19 9l-7 7-7-7"
+              />
+            </svg>
+          </button>
+
+          {/* Collapsible Config */}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-out ${
+              showConfig ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            <div className="flex flex-col gap-4 pb-2">
+              <AspectRatioSelector
+                selectedRatio={aspectRatio}
+                onRatioChange={setAspectRatio}
+                disabled={isGenerating}
+              />
+              <ImageCountSelector
+                count={imageCount}
+                onCountChange={setImageCount}
+                disabled={isGenerating}
+              />
             </div>
-        </main>
+          </div>
 
-        {isLoading && (
-            <div className="mt-10 text-center">
-                 <div className="flex justify-center items-center space-x-2">
-                    <div className="w-4 h-4 rounded-full bg-indigo-400 animate-pulse [animation-delay:-0.3s]"></div>
-                    <div className="w-4 h-4 rounded-full bg-indigo-400 animate-pulse [animation-delay:-0.15s]"></div>
-                    <div className="w-4 h-4 rounded-full bg-indigo-400 animate-pulse"></div>
-                </div>
-                <p className="mt-6 text-slate-300 text-lg">Gerando prompts... Por favor, aguarde.</p>
-                <p className="text-slate-500 text-sm">Nossa IA está criando a estratégia perfeita para suas imagens.</p>
-            </div>
-        )}
+          {/* Prompt Input */}
+          <PromptInput
+            onSubmit={handleGenerate}
+            disabled={isGenerating}
+            modelColor={modelColor}
+          />
+        </div>
 
-        {error && (
-            <div className="mt-10 text-center bg-red-900/30 border border-red-500/50 p-4 rounded-lg">
-                <p className="text-red-400">{error}</p>
-            </div>
-        )}
+        {/* Divider */}
+        <div className="mx-4 my-2 border-t border-gray-800/50" />
 
-        {generatedPrompts.length > 0 && !isLoading && (
-            <section className="mt-12">
-                <h3 className="text-3xl font-bold text-center mb-8 text-slate-100">✨ Resultados Gerados ✨</h3>
-                <div className="space-y-4">
-                    {generatedPrompts.map((prompt, index) => (
-                        <div 
-                           key={index} 
-                           className={`transition-all duration-700 ease-out ${promptsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-5'}`} 
-                           style={{ transitionDelay: `${index * 100}ms` }}
-                        >
-                            <GeneratedPromptCard prompt={prompt} index={index} />
-                        </div>
-                    ))}
-                </div>
-            </section>
-        )}
-      </div>
+        {/* Gallery Section */}
+        <div ref={galleryRef} className="flex-1 px-4 pb-8">
+          <ImageGallery sessions={sessions} />
+        </div>
+      </main>
 
-      <PhotoAgentModal
-        open={isModalOpen}
-        onClose={handleCloseModal}
-        onSubmit={handleSubmit}
-        productName={productName}
-      />
+      {/* Bottom safe area for mobile */}
+      <div className="h-safe-bottom" />
     </div>
   );
 };

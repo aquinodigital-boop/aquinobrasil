@@ -1,5 +1,5 @@
 {
-  "name": "AQUINOBRASIL Gerador de Prompts Estratégicos",
-  "description": "Um agente de IA para criar prompts de imagem de alta conversão para seus produtos de e-commerce. Forneça detalhes do produto e a IA gerará prompts criativos e estratégicos para maximizar as vendas.",
+  "name": "Nano Banana Pro - Gerador de Imagens IA",
+  "description": "App mobile para gerar imagens a partir de prompts usando a API do Gemini. Suporta modo PRO (Imagen 3 - alta qualidade) e FLASH (Gemini Flash - rapido). Interface otimizada para dispositivos moveis.",
   "requestFramePermissions": []
 }
