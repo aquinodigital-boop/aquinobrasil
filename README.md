@@ -1,111 +1,93 @@
 # VideoComposer - Composição de Vídeos Curtos
 
-Aplicativo para combinar múltiplos vídeos curtos (5-10s) em um único vídeo final (25-30s) com transições profissionais, otimizado para redes sociais.
+Aplicativo web que combina múltiplos vídeos curtos (5-10s) em um único vídeo final (25-30s) com transições profissionais. **100% processado no navegador** - seus vídeos nunca saem do seu dispositivo.
 
 ## Funcionalidades
 
-- **Upload múltiplo**: Arraste ou selecione até 10 vídeos de uma vez
-- **Timeline interativa**: Reordene clipes por drag-and-drop
+- **Upload drag-and-drop**: Arraste ou selecione até 10 vídeos
+- **Timeline interativa**: Reordene clipes arrastando
 - **10+ transições**: Fade, dissolve, wipe, slide, zoom e mais
 - **Formatos otimizados**: Reels, TikTok, Stories, Feed Instagram, YouTube Shorts
-- **Processamento eficiente**: Backend com FFmpeg para composição rápida
-- **Preview integrado**: Assista ao resultado diretamente no browser
+- **100% privado**: Todo processamento acontece no browser via WebAssembly
+- **Preview integrado**: Assista ao resultado antes de baixar
 - **Download direto**: Baixe o vídeo final em MP4
 
-## Arquitetura
+## Como Funciona
 
-```
-├── backend/                 # API Python (FastAPI + FFmpeg)
-│   ├── main.py             # Endpoints da API
-│   ├── video_processor.py  # Lógica de processamento de vídeo
-│   └── requirements.txt    # Dependências Python
-├── components/             # Componentes React
-│   ├── VideoUploader.tsx   # Upload com drag-and-drop
-│   ├── VideoTimeline.tsx   # Timeline de organização
-│   ├── TransitionSelector.tsx  # Seletor de transições
-│   ├── CompositionConfig.tsx   # Configurações de saída
-│   ├── ProcessingView.tsx  # Indicador de progresso
-│   ├── ResultView.tsx      # Player e download
-│   └── StepIndicator.tsx   # Navegação por etapas
-├── services/
-│   └── apiService.ts       # Comunicação com a API
-├── App.tsx                 # Componente principal
-├── types.ts                # Tipos TypeScript
-└── index.html              # Entrada HTML
-```
+O app usa **FFmpeg.wasm** - uma versão do FFmpeg compilada para WebAssembly que roda diretamente no navegador. Não há necessidade de backend, servidor ou instalação de software.
 
-## Requisitos
+1. Selecione seus vídeos curtos
+2. Organize a ordem na timeline
+3. Escolha o tipo de transição e configurações
+4. Clique em "Compor Vídeo"
+5. Baixe o resultado
 
-- **Node.js** 18+
-- **Python** 3.10+
-- **FFmpeg** 5+ (com suporte a libx264)
+## Tecnologias
+
+- **React 19** + TypeScript + Vite
+- **Tailwind CSS** para estilização
+- **FFmpeg.wasm** para processamento de vídeo no browser
+- **Canvas API** para geração de thumbnails
+- **HTMLVideoElement** para metadados de vídeo
 
 ## Instalação e Execução
-
-### 1. Backend (Python/FastAPI)
-
-```bash
-cd backend
-pip install -r requirements.txt
-python main.py
-```
-
-O backend estará disponível em `http://localhost:8000`.
-
-### 2. Frontend (React/Vite)
 
 ```bash
 npm install
 npm run dev
 ```
 
-O frontend estará disponível em `http://localhost:3000`.
+O app estará disponível em `http://localhost:3000`.
 
-### Comando rápido
+Para build de produção:
 
 ```bash
-# Instalar tudo
-npm install && cd backend && pip install -r requirements.txt && cd ..
-
-# Rodar backend (em um terminal)
-cd backend && python main.py
-
-# Rodar frontend (em outro terminal)
-npm run dev
+npm run build
+npm run preview
 ```
 
-## API Endpoints
+## Estrutura do Projeto
 
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| GET | `/api/health` | Status do servidor |
-| POST | `/api/videos/upload` | Upload de vídeos (multipart) |
-| GET | `/api/thumbnails/{filename}` | Thumbnail de um vídeo |
-| POST | `/api/compose` | Iniciar composição |
-| GET | `/api/jobs/{job_id}` | Status de um job |
-| GET | `/api/videos/download/{job_id}` | Download do vídeo final |
-| GET | `/api/videos/preview/{job_id}` | Preview do vídeo final |
-| DELETE | `/api/videos/{video_id}` | Remover vídeo |
-| GET | `/api/transitions` | Lista de transições |
+```
+├── App.tsx                          # Componente principal com fluxo de 5 etapas
+├── types.ts                         # Tipos TypeScript
+├── index.html                       # HTML de entrada
+├── index.css                        # Estilos globais
+├── services/
+│   └── videoProcessor.ts            # Processamento FFmpeg.wasm no browser
+├── components/
+│   ├── VideoUploader.tsx            # Upload drag-and-drop
+│   ├── VideoTimeline.tsx            # Timeline de organização
+│   ├── TransitionSelector.tsx       # Seletor de transições
+│   ├── CompositionConfig.tsx        # Configurações de saída
+│   ├── ProcessingView.tsx           # Indicador de progresso
+│   ├── ResultView.tsx               # Player e download
+│   ├── StepIndicator.tsx            # Navegação por etapas
+│   └── icons/                       # Ícones SVG
+├── vite.config.ts                   # Configuração Vite com headers COOP/COEP
+├── tsconfig.json                    # Configuração TypeScript
+└── package.json                     # Dependências
+```
 
 ## Transições Disponíveis
 
-| ID | Nome | Descrição |
-|----|------|-----------|
-| fade | Fade | Transição suave com fade in/out |
-| dissolve | Dissolve | Dissolução gradual entre clipes |
-| wipe_left | Wipe Left | Limpa da direita para a esquerda |
-| wipe_right | Wipe Right | Limpa da esquerda para a direita |
-| wipe_up | Wipe Up | Limpa de baixo para cima |
-| wipe_down | Wipe Down | Limpa de cima para baixo |
-| slide_left | Slide Left | Desliza para a esquerda |
-| slide_right | Slide Right | Desliza para a direita |
-| zoom_in | Zoom Squeeze | Efeito de zoom/squeeze |
-| none | Corte Seco | Sem transição |
+| Transição | Descrição |
+|-----------|-----------|
+| Fade | Transição suave com fade in/out |
+| Dissolve | Dissolução gradual entre clipes |
+| Wipe Left/Right/Up/Down | Limpa em uma direção |
+| Slide Left/Right | Desliza para o lado |
+| Zoom Squeeze | Efeito de squeeze vertical |
+| Corte Seco | Sem transição |
 
-## Stack Tecnológica
+## Requisitos do Browser
 
-- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS
-- **Backend**: Python 3.12 + FastAPI + FFmpeg
-- **Processamento**: FFmpeg com filtros xfade para transições
-- **Formato de saída**: MP4 (H.264, yuv420p)
+- Chrome 94+, Edge 94+, Firefox 103+, Safari 16.4+
+- Suporte a SharedArrayBuffer (habilitado via headers COOP/COEP)
+- Recomendado: 4GB+ RAM disponível para processamento
+
+## Notas Importantes
+
+- **Privacidade**: Nenhum vídeo é enviado para servidores. Tudo é processado localmente.
+- **Performance**: O tempo de processamento depende do hardware do dispositivo e do tamanho dos vídeos.
+- **Limite**: Para melhor performance no browser, a resolução de saída é limitada a 720p.

@@ -6,10 +6,10 @@ export interface VideoClip {
   duration: number;
   width: number;
   height: number;
-  fps: number;
-  thumbnail_url: string;
   size_bytes: number;
-  file?: File;
+  file: File;
+  thumbnailUrl: string; // data URL da thumbnail gerada no browser
+  objectUrl: string; // URL.createObjectURL para preview
   order: number;
 }
 
@@ -25,14 +25,6 @@ export interface CompositionSettings {
   target_duration: number;
   output_width: number;
   output_height: number;
-}
-
-export interface JobStatus {
-  job_id: string;
-  status: "processing" | "completed" | "error";
-  progress: number;
-  output_url: string | null;
-  error: string | null;
 }
 
 export type AppStep = "upload" | "arrange" | "settings" | "processing" | "result";

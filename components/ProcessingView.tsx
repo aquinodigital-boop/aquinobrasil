@@ -3,21 +3,24 @@ import React, { useEffect, useState } from "react";
 interface ProcessingViewProps {
   progress: number;
   status: string;
+  message?: string;
 }
 
 const processingSteps = [
   { threshold: 0, label: "Iniciando processamento..." },
-  { threshold: 10, label: "Analisando vídeos de entrada..." },
+  { threshold: 5, label: "Carregando motor de vídeo (FFmpeg)..." },
+  { threshold: 10, label: "Carregando vídeos na memória..." },
   { threshold: 25, label: "Normalizando resoluções e codecs..." },
-  { threshold: 50, label: "Aplicando transições entre clipes..." },
-  { threshold: 75, label: "Renderizando vídeo final..." },
-  { threshold: 90, label: "Otimizando para reprodução web..." },
+  { threshold: 60, label: "Aplicando transições entre clipes..." },
+  { threshold: 70, label: "Renderizando vídeo final..." },
+  { threshold: 90, label: "Finalizando..." },
   { threshold: 100, label: "Composição concluída!" },
 ];
 
 export const ProcessingView: React.FC<ProcessingViewProps> = ({
   progress,
   status,
+  message,
 }) => {
   const [animatedProgress, setAnimatedProgress] = useState(0);
   const [dots, setDots] = useState("");
@@ -50,7 +53,6 @@ export const ProcessingView: React.FC<ProcessingViewProps> = ({
       {/* Animação circular */}
       <div className="relative w-40 h-40">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-          {/* Background circle */}
           <circle
             cx="50"
             cy="50"
@@ -60,7 +62,6 @@ export const ProcessingView: React.FC<ProcessingViewProps> = ({
             strokeWidth="6"
             fill="none"
           />
-          {/* Progress circle */}
           <circle
             cx="50"
             cy="50"
@@ -91,7 +92,7 @@ export const ProcessingView: React.FC<ProcessingViewProps> = ({
               : "Erro no processamento"}
         </h3>
         <p className="text-slate-400 text-sm max-w-md">
-          {currentStep?.label || "Preparando..."}
+          {message || currentStep?.label || "Preparando..."}
         </p>
       </div>
 
@@ -133,6 +134,16 @@ export const ProcessingView: React.FC<ProcessingViewProps> = ({
           );
         })}
       </div>
+
+      {/* Aviso sobre processamento local */}
+      {status === "processing" && (
+        <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3 max-w-sm text-center">
+          <p className="text-xs text-slate-500">
+            Processando no seu navegador. Mantenha esta aba aberta.
+            O tempo depende do tamanho dos vídeos e do seu dispositivo.
+          </p>
+        </div>
+      )}
     </div>
   );
 };

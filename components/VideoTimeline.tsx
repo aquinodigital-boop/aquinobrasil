@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import type { VideoClip } from "../types";
 import { TrashIcon } from "./icons/TrashIcon";
 import { ChevronLeftIcon, ChevronRightIcon } from "./icons/ChevronIcon";
-import { getThumbnailUrl } from "../services/apiService";
 
 interface VideoTimelineProps {
   clips: VideoClip[];
@@ -22,7 +21,6 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
     const newClips = [...clips];
     const [moved] = newClips.splice(fromIndex, 1);
     newClips.splice(toIndex, 0, moved);
-    // Update order
     newClips.forEach((c, i) => (c.order = i));
     onReorder(newClips);
   };
@@ -101,14 +99,11 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
 
               {/* Thumbnail */}
               <div className="flex-shrink-0 w-16 h-12 rounded-lg overflow-hidden bg-gray-700">
-                {clip.thumbnail_url ? (
+                {clip.thumbnailUrl ? (
                   <img
-                    src={`http://localhost:8000${clip.thumbnail_url}`}
+                    src={clip.thumbnailUrl}
                     alt={clip.filename}
                     className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">
@@ -164,13 +159,6 @@ export const VideoTimeline: React.FC<VideoTimelineProps> = ({
                   <TrashIcon className="w-4 h-4" />
                 </button>
               </div>
-
-              {/* Conector de transição */}
-              {index < clips.length - 1 && (
-                <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 z-10">
-                  {/* Handled in parent */}
-                </div>
-              )}
             </div>
           ))}
         </div>

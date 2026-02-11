@@ -1,30 +1,25 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import { DownloadIcon } from "./icons/DownloadIcon";
-import { PlayIcon } from "./icons/PlayIcon";
-import { getDownloadUrl, getPreviewUrl } from "../services/apiService";
 
 interface ResultViewProps {
-  jobId: string;
+  videoUrl: string;
+  videoBlob: Blob | null;
   onReset: () => void;
 }
 
-export const ResultView: React.FC<ResultViewProps> = ({ jobId, onReset }) => {
+export const ResultView: React.FC<ResultViewProps> = ({ videoUrl, videoBlob, onReset }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const previewUrl = getPreviewUrl(jobId);
-  const downloadUrl = getDownloadUrl(jobId);
-
-  const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
+  const handleDownload = useCallback(() => {
+    if (!videoBlob) return;
+    const a = document.createElement("a");
+    a.href = videoUrl;
+    a.download = `video_composto_${Date.now()}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }, [videoUrl, videoBlob]);
 
   return (
     <div className="flex flex-col items-center gap-8 py-8">
@@ -47,7 +42,7 @@ export const ResultView: React.FC<ResultViewProps> = ({ jobId, onReset }) => {
       <div className="relative w-full max-w-lg rounded-2xl overflow-hidden bg-black shadow-2xl shadow-violet-500/10 border border-gray-700/50">
         <video
           ref={videoRef}
-          src={previewUrl}
+          src={videoUrl}
           className="w-full"
           controls
           playsInline
@@ -59,16 +54,22 @@ export const ResultView: React.FC<ResultViewProps> = ({ jobId, onReset }) => {
         </video>
       </div>
 
+      {/* Tamanho do arquivo */}
+      {videoBlob && (
+        <p className="text-xs text-slate-500">
+          Tamanho do arquivo: {(videoBlob.size / (1024 * 1024)).toFixed(1)} MB
+        </p>
+      )}
+
       {/* Ações */}
       <div className="flex flex-col sm:flex-row items-center gap-4">
-        <a
-          href={downloadUrl}
-          download
+        <button
+          onClick={handleDownload}
           className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg shadow-violet-500/25 hover:shadow-violet-500/40"
         >
           <DownloadIcon className="w-5 h-5" />
           Baixar Vídeo
-        </a>
+        </button>
 
         <button
           onClick={onReset}
@@ -84,8 +85,8 @@ export const ResultView: React.FC<ResultViewProps> = ({ jobId, onReset }) => {
       {/* Dica */}
       <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 max-w-md text-center">
         <p className="text-xs text-slate-400">
-          O vídeo foi otimizado para reprodução web e redes sociais.
-          Para melhor qualidade, baixe o arquivo e faça upload diretamente na plataforma desejada.
+          Seu vídeo foi processado inteiramente no navegador - nenhum dado foi enviado para servidores externos.
+          Para melhor qualidade, faça upload diretamente na plataforma desejada.
         </p>
       </div>
     </div>

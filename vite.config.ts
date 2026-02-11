@@ -6,11 +6,10 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
+    headers: {
+      // Necessário para SharedArrayBuffer (FFmpeg.wasm)
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
   plugins: [react()],
@@ -18,5 +17,8 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, '.'),
     },
+  },
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   },
 });

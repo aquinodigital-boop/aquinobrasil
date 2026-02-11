@@ -3,7 +3,6 @@ import type {
   VideoClip,
   TransitionOption,
   CompositionSettings,
-  JobStatus,
   AppStep,
 } from "./types";
 import { VideoUploader } from "./components/VideoUploader";
@@ -14,12 +13,11 @@ import { ProcessingView } from "./components/ProcessingView";
 import { ResultView } from "./components/ResultView";
 import { StepIndicator } from "./components/StepIndicator";
 import {
-  uploadVideos,
-  getTransitions,
-  startComposition,
-  getJobStatus,
-  deleteVideo,
-} from "./services/apiService";
+  getVideoMetadata,
+  generateThumbnail,
+  composeVideos,
+  getAvailableTransitions,
+} from "./services/videoProcessor";
 import { VideoIcon } from "./components/icons/VideoIcon";
 
 const DEFAULT_SETTINGS: CompositionSettings = {
@@ -36,87 +34,93 @@ const App: React.FC = () => {
   const [transitions, setTransitions] = useState<TransitionOption[]>([]);
   const [settings, setSettings] = useState<CompositionSettings>(DEFAULT_SETTINGS);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
-  const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  // Verificar se backend está online
+  // Processamento
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingMessage, setProcessingMessage] = useState("");
+  const [processingStatus, setProcessingStatus] = useState<"processing" | "completed" | "error">("processing");
+
+  // Resultado
+  const [resultBlobUrl, setResultBlobUrl] = useState<string | null>(null);
+  const [resultBlob, setResultBlob] = useState<Blob | null>(null);
+
+  // Carregar transições (tudo local, sem API)
   useEffect(() => {
-    const checkBackend = async () => {
-      try {
-        const res = await fetch("http://localhost:8000/api/health");
-        setBackendOnline(res.ok);
-      } catch {
-        setBackendOnline(false);
-      }
-    };
-    checkBackend();
-    const interval = setInterval(checkBackend, 10000);
-    return () => clearInterval(interval);
+    setTransitions(getAvailableTransitions());
   }, []);
 
-  // Carregar transições disponíveis
+  // Cleanup de object URLs ao desmontar
   useEffect(() => {
-    const loadTransitions = async () => {
-      try {
-        const t = await getTransitions();
-        setTransitions(t);
-      } catch {
-        // Usar transições padrão se backend não responder
-        setTransitions([
-          { id: "fade", name: "Fade", description: "Transição suave" },
-          { id: "dissolve", name: "Dissolve", description: "Dissolução" },
-          { id: "wipe_left", name: "Wipe Left", description: "Limpa para esquerda" },
-          { id: "slide_right", name: "Slide Right", description: "Desliza direita" },
-          { id: "none", name: "Corte Seco", description: "Sem transição" },
-        ]);
-      }
+    return () => {
+      clips.forEach((c) => {
+        if (c.objectUrl) URL.revokeObjectURL(c.objectUrl);
+      });
+      if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
     };
-    loadTransitions();
   }, []);
-
-  // Polling do status do job
-  useEffect(() => {
-    if (jobStatus && jobStatus.status === "processing" && jobStatus.job_id) {
-      pollingRef.current = setInterval(async () => {
-        try {
-          const status = await getJobStatus(jobStatus.job_id);
-          setJobStatus(status);
-          if (status.status === "completed" || status.status === "error") {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-            if (status.status === "completed") {
-              setStep("result");
-            }
-          }
-        } catch {
-          // Continuar polling
-        }
-      }, 1500);
-
-      return () => {
-        if (pollingRef.current) clearInterval(pollingRef.current);
-      };
-    }
-  }, [jobStatus?.job_id, jobStatus?.status]);
 
   // ====== Handlers ======
 
   const handleFilesSelected = useCallback(async (files: File[]) => {
     setIsUploading(true);
-    setUploadError(null);
+    setError(null);
+
     try {
-      const uploaded = await uploadVideos(files);
+      const newClips: VideoClip[] = [];
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+
+        // Validar tipo
+        if (!file.type.startsWith("video/")) {
+          throw new Error(`"${file.name}" não é um vídeo válido`);
+        }
+
+        // Validar tamanho (max 200MB)
+        if (file.size > 200 * 1024 * 1024) {
+          throw new Error(`"${file.name}" excede 200MB`);
+        }
+
+        // Obter metadados via HTMLVideoElement
+        const meta = await getVideoMetadata(file);
+
+        if (meta.duration < 0.5) {
+          throw new Error(`"${file.name}" é muito curto (mínimo 0.5s)`);
+        }
+        if (meta.duration > 120) {
+          throw new Error(`"${file.name}" excede 2 minutos`);
+        }
+
+        // Gerar thumbnail via Canvas
+        const thumbnail = await generateThumbnail(file);
+
+        const id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+        newClips.push({
+          id,
+          filename: file.name,
+          duration: meta.duration,
+          width: meta.width,
+          height: meta.height,
+          size_bytes: file.size,
+          file,
+          thumbnailUrl: thumbnail,
+          objectUrl: URL.createObjectURL(file),
+          order: i,
+        });
+      }
+
       setClips((prev) => {
-        const newClips = [
+        const updated = [
           ...prev,
-          ...uploaded.map((v, i) => ({ ...v, order: prev.length + i })),
+          ...newClips.map((c, i) => ({ ...c, order: prev.length + i })),
         ];
-        return newClips;
+        return updated;
       });
       setStep("arrange");
     } catch (err: any) {
-      setUploadError(err.message || "Erro ao fazer upload dos vídeos");
+      setError(err.message || "Erro ao processar vídeos");
     } finally {
       setIsUploading(false);
     }
@@ -126,44 +130,71 @@ const App: React.FC = () => {
     setClips(newClips);
   }, []);
 
-  const handleRemoveClip = useCallback(
-    async (clipId: string) => {
-      try {
-        await deleteVideo(clipId);
-      } catch {
-        // Remover localmente mesmo se a API falhar
-      }
-      setClips((prev) => prev.filter((c) => c.id !== clipId));
-    },
-    []
-  );
+  const handleRemoveClip = useCallback((clipId: string) => {
+    setClips((prev) => {
+      const clip = prev.find((c) => c.id === clipId);
+      if (clip?.objectUrl) URL.revokeObjectURL(clip.objectUrl);
+      return prev.filter((c) => c.id !== clipId);
+    });
+  }, []);
 
   const handleStartComposition = useCallback(async () => {
     if (clips.length < 2) {
-      setUploadError("São necessários pelo menos 2 vídeos");
+      setError("São necessários pelo menos 2 vídeos");
       return;
     }
 
     setStep("processing");
-    setUploadError(null);
+    setError(null);
+    setProcessingProgress(0);
+    setProcessingStatus("processing");
+    setProcessingMessage("Preparando...");
 
     try {
-      const videoIds = clips.map((c) => c.id);
-      const status = await startComposition(videoIds, settings);
-      setJobStatus(status);
+      const sortedClips = [...clips].sort((a, b) => a.order - b.order);
+      const files = sortedClips.map((c) => c.file);
+      const durations = sortedClips.map((c) => c.duration);
+
+      const blob = await composeVideos(
+        files,
+        durations,
+        settings,
+        (progress, message) => {
+          setProcessingProgress(progress);
+          setProcessingMessage(message);
+        }
+      );
+
+      // Criar URL para preview/download
+      const url = URL.createObjectURL(blob);
+      setResultBlob(blob);
+      setResultBlobUrl(url);
+      setProcessingStatus("completed");
+      setProcessingProgress(100);
+      setStep("result");
     } catch (err: any) {
-      setUploadError(err.message || "Erro ao iniciar composição");
-      setStep("settings");
+      console.error("Erro na composição:", err);
+      setProcessingStatus("error");
+      setError(err.message || "Erro ao compor vídeo");
     }
   }, [clips, settings]);
 
   const handleReset = useCallback(() => {
+    // Limpar URLs anteriores
+    clips.forEach((c) => {
+      if (c.objectUrl) URL.revokeObjectURL(c.objectUrl);
+    });
+    if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
+
     setStep("upload");
     setClips([]);
-    setJobStatus(null);
-    setUploadError(null);
+    setResultBlobUrl(null);
+    setResultBlob(null);
+    setError(null);
     setSettings(DEFAULT_SETTINGS);
-  }, []);
+    setProcessingProgress(0);
+    setProcessingStatus("processing");
+  }, [clips, resultBlobUrl]);
 
   const canProceedFromArrange = clips.length >= 2;
   const canProceedFromSettings = canProceedFromArrange;
@@ -180,31 +211,16 @@ const App: React.FC = () => {
             <div>
               <h1 className="text-lg font-bold text-slate-100">VideoComposer</h1>
               <p className="text-xs text-slate-500 hidden sm:block">
-                Composição inteligente de vídeos curtos
+                Composição de vídeos curtos - 100% no navegador
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Status do backend */}
-            <div className="flex items-center gap-1.5">
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  backendOnline === null
-                    ? "bg-gray-500 animate-pulse"
-                    : backendOnline
-                      ? "bg-green-500"
-                      : "bg-red-500"
-                }`}
-              />
-              <span className="text-xs text-slate-500 hidden sm:block">
-                {backendOnline === null
-                  ? "Conectando..."
-                  : backendOnline
-                    ? "Backend Online"
-                    : "Backend Offline"}
-              </span>
-            </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-xs text-slate-500 hidden sm:block">
+              Processamento Local
+            </span>
           </div>
         </div>
       </header>
@@ -218,31 +234,16 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-8">
-        {/* Backend offline warning */}
-        {backendOnline === false && step !== "result" && (
-          <div className="mb-6 bg-amber-900/20 border border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
-            <svg className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-            </svg>
-            <div>
-              <p className="text-amber-400 text-sm font-medium">Backend não conectado</p>
-              <p className="text-amber-400/70 text-xs mt-1">
-                Inicie o backend com: <code className="bg-amber-900/30 px-1.5 py-0.5 rounded text-amber-300">cd backend && pip install -r requirements.txt && python main.py</code>
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* Error display */}
-        {uploadError && (
+        {error && (
           <div className="mb-6 bg-red-900/20 border border-red-500/30 rounded-xl p-4 flex items-center gap-3">
             <svg className="w-5 h-5 text-red-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
             </svg>
-            <p className="text-red-400 text-sm">{uploadError}</p>
+            <p className="text-red-400 text-sm flex-1">{error}</p>
             <button
-              onClick={() => setUploadError(null)}
-              className="ml-auto text-red-400 hover:text-red-300"
+              onClick={() => setError(null)}
+              className="ml-auto text-red-400 hover:text-red-300 flex-shrink-0"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -260,7 +261,7 @@ const App: React.FC = () => {
               </h2>
               <p className="text-slate-400 text-lg">
                 Combine vídeos curtos em conteúdo profissional para redes sociais.
-                Adicione transições suaves e exporte em segundos.
+                Tudo processado diretamente no seu navegador - sem upload para servidores.
               </p>
             </div>
 
@@ -275,11 +276,11 @@ const App: React.FC = () => {
                 {
                   icon: (
                     <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" />
                     </svg>
                   ),
-                  title: "Processamento Rápido",
-                  desc: "FFmpeg otimizado para composição eficiente de vídeos",
+                  title: "100% Privado",
+                  desc: "Seus vídeos nunca saem do seu navegador. Sem servidores.",
                 },
                 {
                   icon: (
@@ -346,6 +347,9 @@ const App: React.FC = () => {
             <div className="flex items-center justify-between pt-4">
               <button
                 onClick={() => {
+                  clips.forEach((c) => {
+                    if (c.objectUrl) URL.revokeObjectURL(c.objectUrl);
+                  });
                   setClips([]);
                   setStep("upload");
                 }}
@@ -418,31 +422,32 @@ const App: React.FC = () => {
 
         {/* Step: Processing */}
         {step === "processing" && (
-          <ProcessingView
-            progress={jobStatus?.progress ?? 5}
-            status={jobStatus?.status ?? "processing"}
-          />
+          <>
+            <ProcessingView
+              progress={processingProgress}
+              status={processingStatus}
+              message={processingMessage}
+            />
+            {processingStatus === "error" && (
+              <div className="mt-8 text-center space-y-4">
+                <button
+                  onClick={() => setStep("settings")}
+                  className="px-6 py-2.5 bg-gray-800 text-slate-300 font-medium rounded-xl border border-gray-700 hover:bg-gray-700 transition-colors"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            )}
+          </>
         )}
 
         {/* Step: Result */}
-        {step === "result" && jobStatus?.job_id && (
-          <ResultView jobId={jobStatus.job_id} onReset={handleReset} />
-        )}
-
-        {/* Error from job */}
-        {step === "processing" && jobStatus?.status === "error" && (
-          <div className="mt-8 text-center space-y-4">
-            <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-6 max-w-md mx-auto">
-              <p className="text-red-400 font-medium mb-2">Erro no processamento</p>
-              <p className="text-red-400/70 text-sm">{jobStatus.error}</p>
-            </div>
-            <button
-              onClick={() => setStep("settings")}
-              className="px-6 py-2.5 bg-gray-800 text-slate-300 font-medium rounded-xl border border-gray-700 hover:bg-gray-700 transition-colors"
-            >
-              Tentar novamente
-            </button>
-          </div>
+        {step === "result" && resultBlobUrl && (
+          <ResultView
+            videoUrl={resultBlobUrl}
+            videoBlob={resultBlob}
+            onReset={handleReset}
+          />
         )}
       </main>
 
@@ -450,7 +455,7 @@ const App: React.FC = () => {
       <footer className="border-t border-gray-800/50 py-4">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
           <p className="text-xs text-slate-600">
-            VideoComposer - Composição inteligente de vídeos curtos para redes sociais
+            VideoComposer - Composição de vídeos 100% no navegador. Seus arquivos nunca saem do seu dispositivo.
           </p>
         </div>
       </footer>
