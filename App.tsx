@@ -5,10 +5,12 @@ import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { ImageCountSelector } from './components/ImageCountSelector';
 import { PromptInput } from './components/PromptInput';
 import { ImageGallery } from './components/ImageGallery';
-import { generateImages } from './services/geminiService';
+import { ApiKeyModal, getStoredApiKey, clearApiKey } from './components/ApiKeyModal';
+import { generateImages, setApiKey } from './services/geminiService';
 import type { ModelType, AspectRatio, GenerationSession } from './types';
 
 const App: React.FC = () => {
+  const [apiKeyReady, setApiKeyReady] = useState(false);
   const [model, setModel] = useState<ModelType>('FLASH');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
   const [imageCount, setImageCount] = useState(1);
@@ -17,10 +19,38 @@ const App: React.FC = () => {
   const [showConfig, setShowConfig] = useState(false);
   const galleryRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to top of gallery when new session is added
+  // Check for stored API key or env var on mount
+  useEffect(() => {
+    const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+    if (envKey) {
+      setApiKey(envKey);
+      setApiKeyReady(true);
+      return;
+    }
+    const storedKey = getStoredApiKey();
+    if (storedKey) {
+      setApiKey(storedKey);
+      setApiKeyReady(true);
+    }
+  }, []);
+
+  const handleApiKeySet = (key: string) => {
+    setApiKey(key);
+    setApiKeyReady(true);
+  };
+
+  const handleLogout = () => {
+    clearApiKey();
+    setApiKeyReady(false);
+    setSessions([]);
+  };
+
+  // Scroll to gallery when new session is added
   useEffect(() => {
     if (sessions.length > 0 && galleryRef.current) {
-      galleryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => {
+        galleryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
     }
   }, [sessions.length]);
 
@@ -56,17 +86,19 @@ const App: React.FC = () => {
           )
         );
       } catch (error: any) {
+        const errorMsg = error.message || 'Erro desconhecido ao gerar imagens';
         setSessions((prev) =>
           prev.map((s) =>
             s.id === sessionId
-              ? {
-                  ...s,
-                  status: 'error' as const,
-                  error: error.message || 'Erro desconhecido ao gerar imagens',
-                }
+              ? { ...s, status: 'error' as const, error: errorMsg }
               : s
           )
         );
+        // If API key is invalid, prompt to re-enter
+        if (errorMsg.includes('API Key invalida') || errorMsg.includes('API_KEY_INVALID')) {
+          clearApiKey();
+          setApiKeyReady(false);
+        }
       } finally {
         setIsGenerating(false);
       }
@@ -74,11 +106,16 @@ const App: React.FC = () => {
     [model, aspectRatio, imageCount]
   );
 
+  // Show API Key modal if not configured
+  if (!apiKeyReady) {
+    return <ApiKeyModal onApiKeySet={handleApiKeySet} />;
+  }
+
   const modelColor = model === 'PRO' ? 'amber' : 'cyan';
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
-      <Header />
+      <Header onLogout={handleLogout} />
 
       <main className="flex-1 flex flex-col max-w-lg mx-auto w-full">
         {/* Controls Section */}
@@ -94,7 +131,7 @@ const App: React.FC = () => {
           <button
             type="button"
             onClick={() => setShowConfig(!showConfig)}
-            className="flex items-center justify-between w-full px-3 py-2 rounded-lg bg-gray-900/60 border border-gray-800 text-xs text-slate-400 hover:text-slate-300 hover:border-gray-700 transition-all"
+            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-800 text-xs text-slate-400 hover:text-slate-300 hover:border-gray-700 active:bg-gray-900 transition-all"
           >
             <span className="font-semibold uppercase tracking-wider">
               Configuracoes &middot; {aspectRatio} &middot; {imageCount}{' '}

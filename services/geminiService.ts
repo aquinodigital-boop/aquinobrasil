@@ -1,11 +1,17 @@
 import { GoogleGenAI } from "@google/genai";
 import type { GenerationConfig, GeneratedImage } from '../types';
 
+let _dynamicApiKey: string | null = null;
+
+export const setApiKey = (key: string) => {
+  _dynamicApiKey = key;
+};
+
 const getAI = (): GoogleGenAI => {
-  const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = _dynamicApiKey || process.env.API_KEY || process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
-      "API Key do Gemini nao configurada. Adicione GEMINI_API_KEY no arquivo .env.local"
+      "API Key do Gemini nao configurada."
     );
   }
   return new GoogleGenAI({ apiKey });
@@ -67,6 +73,11 @@ const generateWithImagen = async (
     if (error.message?.includes("SAFETY")) {
       throw new Error(
         "O prompt foi bloqueado pelo filtro de seguranca. Tente reformular."
+      );
+    }
+    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("401")) {
+      throw new Error(
+        "API Key invalida. Verifique sua chave e tente novamente."
       );
     }
     throw new Error(
@@ -131,6 +142,11 @@ const generateWithFlash = async (
     if (error.message?.includes("SAFETY")) {
       throw new Error(
         "O prompt foi bloqueado pelo filtro de seguranca. Tente reformular."
+      );
+    }
+    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("401")) {
+      throw new Error(
+        "API Key invalida. Verifique sua chave e tente novamente."
       );
     }
     throw new Error(
