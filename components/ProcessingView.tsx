@@ -49,55 +49,42 @@ export const ProcessingView: React.FC<ProcessingViewProps> = ({
     .find((s) => animatedProgress >= s.threshold);
 
   return (
-    <div className="flex flex-col items-center justify-center py-16 space-y-8">
+    <div className="flex flex-col items-center justify-center py-10 sm:py-16 space-y-6 sm:space-y-8">
       {/* Animação circular */}
-      <div className="relative w-40 h-40">
+      <div className="relative w-32 h-32 sm:w-40 sm:h-40">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="42" stroke="currentColor" className="text-gray-700" strokeWidth="6" fill="none" />
           <circle
-            cx="50"
-            cy="50"
-            r="42"
-            stroke="currentColor"
-            className="text-gray-700"
-            strokeWidth="6"
-            fill="none"
-          />
-          <circle
-            cx="50"
-            cy="50"
-            r="42"
-            stroke="currentColor"
+            cx="50" cy="50" r="42" stroke="currentColor"
             className="text-violet-500 transition-all duration-300"
-            strokeWidth="6"
-            fill="none"
-            strokeLinecap="round"
+            strokeWidth="6" fill="none" strokeLinecap="round"
             strokeDasharray={`${2 * Math.PI * 42}`}
             strokeDashoffset={`${2 * Math.PI * 42 * (1 - animatedProgress / 100)}`}
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-bold text-slate-100">
+          <span className="text-2xl sm:text-3xl font-bold text-slate-100">
             {Math.round(animatedProgress)}%
           </span>
         </div>
       </div>
 
       {/* Status */}
-      <div className="text-center space-y-2">
-        <h3 className="text-xl font-semibold text-slate-200">
+      <div className="text-center space-y-2 px-4">
+        <h3 className="text-lg sm:text-xl font-semibold text-slate-200">
           {status === "processing"
             ? `Processando${dots}`
             : status === "completed"
               ? "Concluído!"
               : "Erro no processamento"}
         </h3>
-        <p className="text-slate-400 text-sm max-w-md">
+        <p className="text-slate-400 text-xs sm:text-sm max-w-md">
           {message || currentStep?.label || "Preparando..."}
         </p>
       </div>
 
-      {/* Steps list */}
-      <div className="w-full max-w-md space-y-2">
+      {/* Steps list - esconder em telas muito pequenas */}
+      <div className="w-full max-w-md space-y-2 hidden sm:block">
         {processingSteps.slice(0, -1).map((step, i) => {
           const isActive = animatedProgress >= step.threshold;
           const isCompleted =
@@ -113,12 +100,7 @@ export const ProcessingView: React.FC<ProcessingViewProps> = ({
             >
               <div
                 className={`flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-300
-                  ${isCompleted
-                    ? "bg-violet-500 border-violet-500"
-                    : isActive
-                      ? "border-violet-500"
-                      : "border-gray-600"
-                  }
+                  ${isCompleted ? "bg-violet-500 border-violet-500" : isActive ? "border-violet-500" : "border-gray-600"}
                 `}
               >
                 {isCompleted && (
@@ -135,12 +117,12 @@ export const ProcessingView: React.FC<ProcessingViewProps> = ({
         })}
       </div>
 
-      {/* Aviso sobre processamento local */}
+      {/* Aviso */}
       {status === "processing" && (
-        <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3 max-w-sm text-center">
-          <p className="text-xs text-slate-500">
-            Processando no seu navegador. Mantenha esta aba aberta.
-            O tempo depende do tamanho dos vídeos e do seu dispositivo.
+        <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-3 max-w-sm text-center mx-4">
+          <p className="text-[11px] sm:text-xs text-slate-500">
+            Processando no seu dispositivo. Mantenha esta aba aberta e a tela ligada.
+            Em celulares o processo pode levar mais tempo.
           </p>
         </div>
       )}

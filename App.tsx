@@ -218,8 +218,8 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-1.5">
             <div className="w-2 h-2 rounded-full bg-green-500" />
-            <span className="text-xs text-slate-500 hidden sm:block">
-              Processamento Local
+            <span className="text-[10px] sm:text-xs text-slate-500">
+              Local
             </span>
           </div>
         </div>
@@ -256,12 +256,12 @@ const App: React.FC = () => {
         {step === "upload" && (
           <div className="space-y-8">
             <div className="text-center max-w-2xl mx-auto">
-              <h2 className="text-3xl sm:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400 mb-3">
+              <h2 className="text-2xl sm:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400 mb-2 sm:mb-3">
                 Crie vídeos incríveis
               </h2>
-              <p className="text-slate-400 text-lg">
+              <p className="text-slate-400 text-sm sm:text-lg">
                 Combine vídeos curtos em conteúdo profissional para redes sociais.
-                Tudo processado diretamente no seu navegador - sem upload para servidores.
+                100% no seu dispositivo - sem enviar nada para servidores.
               </p>
             </div>
 
@@ -344,7 +344,7 @@ const App: React.FC = () => {
             />
 
             {/* Navigation */}
-            <div className="flex items-center justify-between pt-4">
+            <div className="flex items-center justify-between pt-4 gap-3">
               <button
                 onClick={() => {
                   clips.forEach((c) => {
@@ -353,14 +353,14 @@ const App: React.FC = () => {
                   setClips([]);
                   setStep("upload");
                 }}
-                className="px-5 py-2.5 text-slate-400 hover:text-slate-200 transition-colors text-sm font-medium"
+                className="px-4 sm:px-5 py-2.5 text-slate-400 active:text-slate-200 sm:hover:text-slate-200 transition-colors text-sm font-medium"
               >
                 Voltar
               </button>
               <button
                 onClick={() => setStep("settings")}
                 disabled={!canProceedFromArrange}
-                className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg shadow-violet-500/25 disabled:opacity-50 disabled:hover:scale-100 disabled:shadow-none"
+                className="px-5 sm:px-6 py-3 sm:py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-semibold rounded-xl transition-all duration-300 active:scale-95 sm:hover:scale-105 shadow-lg shadow-violet-500/25 disabled:opacity-50 disabled:active:scale-100 disabled:shadow-none text-sm sm:text-base"
               >
                 Configurar Transições
               </button>
@@ -402,17 +402,17 @@ const App: React.FC = () => {
             </div>
 
             {/* Navigation */}
-            <div className="flex items-center justify-between pt-4">
+            <div className="flex items-center justify-between pt-4 gap-3">
               <button
                 onClick={() => setStep("arrange")}
-                className="px-5 py-2.5 text-slate-400 hover:text-slate-200 transition-colors text-sm font-medium"
+                className="px-4 sm:px-5 py-2.5 text-slate-400 active:text-slate-200 sm:hover:text-slate-200 transition-colors text-sm font-medium"
               >
                 Voltar
               </button>
               <button
                 onClick={handleStartComposition}
                 disabled={!canProceedFromSettings}
-                className="px-8 py-3 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold rounded-xl transition-all duration-300 hover:scale-105 shadow-lg shadow-violet-500/25 disabled:opacity-50 disabled:hover:scale-100 disabled:shadow-none text-lg"
+                className="px-6 sm:px-8 py-3.5 sm:py-3 bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold rounded-xl transition-all duration-300 active:scale-95 sm:hover:scale-105 shadow-lg shadow-violet-500/25 disabled:opacity-50 disabled:active:scale-100 disabled:shadow-none text-base sm:text-lg"
               >
                 Compor Vídeo
               </button>
