@@ -3,11 +3,11 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
+  base: '/aquinobrasil/',
   server: {
     port: 3000,
     host: '0.0.0.0',
     headers: {
-      // Necessário para SharedArrayBuffer (FFmpeg.wasm)
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
