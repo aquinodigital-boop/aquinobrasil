@@ -1,11 +1,4 @@
-import {
-  GoogleGenAI,
-  SubjectReferenceImage,
-  RawReferenceImage,
-  Modality,
-  EditMode,
-  SubjectReferenceType,
-} from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 import type { GenerationConfig, GeneratedImage } from "../types";
 
 let _dynamicApiKey: string | null = null;
@@ -36,10 +29,38 @@ export const generateImages = async (
 };
 
 // ============================================================
-// IMAGEN 3.0 - EDIT PRODUCT IMAGE (funcionalidade principal)
-// Usa editImage com SubjectReferenceImage + EDIT_MODE_PRODUCT_IMAGE
-// O produto NUNCA e alterado, apenas o cenario/fundo muda
+// Modelos Gemini que suportam geracao nativa de imagens
+// via generateContent com responseModalities IMAGE
+// Tenta em ordem ate encontrar um que funcione
 // ============================================================
+const IMAGE_GEN_MODELS = [
+  "gemini-2.0-flash-exp",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-latest",
+  "gemini-2.5-flash-preview-04-17",
+  "gemini-2.5-flash",
+  "gemini-1.5-flash",
+];
+
+// ============================================================
+// EDITAR PRODUTO COM FOTO DE REFERENCIA
+// Usa generateContent com a imagem do produto como input
+// + prompt descrevendo o cenario desejado
+// O Gemini gera uma nova imagem preservando o produto
+// ============================================================
+const PRODUCT_EDIT_SYSTEM = `Voce e um especialista em edicao e composicao de imagens de produtos para e-commerce.
+
+SUA MISSAO: Receber a foto de um produto e gerar uma NOVA imagem onde o produto aparece em um NOVO cenario/contexto, conforme descrito pelo usuario.
+
+REGRAS OBRIGATORIAS:
+1. O PRODUTO/OBJETO da foto de referencia deve aparecer na imagem gerada com TOTAL FIDELIDADE - mesma forma, cores, rotulo, texto, proporcoes, detalhes, angulo e aparencia.
+2. NUNCA altere, distorca, recorte, modifique ou reinterprete o produto. Ele deve ser uma REPLICA EXATA.
+3. Voce pode APENAS criar/alterar: o fundo, cenario, iluminacao, superficie, contexto visual e elementos decorativos ao redor.
+4. A integracao entre produto e cenario deve ser NATURAL - sombras coerentes, iluminacao consistente, perspectiva correta.
+5. Qualidade: fotografia profissional, fotorrealista, alta resolucao, foco nitido no produto.
+
+Responda APENAS com a imagem gerada. Nao inclua texto.`;
+
 const editProductImage = async (
   config: GenerationConfig
 ): Promise<GeneratedImage[]> => {
@@ -52,142 +73,102 @@ const editProductImage = async (
     : ref.base64Data;
   const mimeType = ref.mimeType || "image/jpeg";
 
-  // SubjectReferenceImage com tipo PRODUCT - diz ao Imagen
-  // que esta imagem contem um PRODUTO que deve ser preservado
-  const subjectRef = new SubjectReferenceImage();
-  subjectRef.referenceImage = {
-    imageBytes: rawBase64,
-    mimeType: mimeType,
-  };
-  subjectRef.referenceId = 0;
-  subjectRef.config = { subjectType: SubjectReferenceType.SUBJECT_TYPE_PRODUCT };
+  const aspectHint =
+    config.aspectRatio !== "1:1"
+      ? ` A imagem final deve ter proporcao ${config.aspectRatio}.`
+      : "";
 
-  // Prompt reforçando preservação do produto
-  const editPrompt = `${config.prompt}. Mantenha o produto/objeto principal exatamente como na foto de referencia, com total fidelidade. Qualidade fotorrealista profissional, iluminacao coerente, alta resolucao.`;
+  const userPrompt = `CENARIO DESEJADO: ${config.prompt}${aspectHint}
 
-  try {
-    const response = await ai.models.editImage({
-      model: "imagen-3.0-capability-001",
-      prompt: editPrompt,
-      referenceImages: [subjectRef],
-      config: {
-        numberOfImages: config.numberOfImages,
-        editMode: EditMode.EDIT_MODE_PRODUCT_IMAGE,
-      },
-    });
+Gere a imagem com o produto da foto de referencia neste cenario. O produto deve ser IDENTICO a referencia.`;
 
-    const images: GeneratedImage[] = [];
-    if (response.generatedImages) {
-      for (const img of response.generatedImages) {
-        if (img.image?.imageBytes) {
-          images.push({
-            id: crypto.randomUUID(),
-            base64Data: img.image.imageBytes,
-            mimeType: "image/png",
-            prompt: config.prompt,
-            model: config.model,
-            aspectRatio: config.aspectRatio,
-            timestamp: Date.now(),
-          });
+  const images: GeneratedImage[] = [];
+  let lastError: any = null;
+
+  for (const modelName of IMAGE_GEN_MODELS) {
+    try {
+      for (let i = 0; i < config.numberOfImages; i++) {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: PRODUCT_EDIT_SYSTEM },
+                {
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: rawBase64,
+                  },
+                },
+                { text: userPrompt },
+              ],
+            },
+          ],
+          config: {
+            responseModalities: [Modality.IMAGE, Modality.TEXT],
+          },
+        });
+
+        if (response.candidates?.[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+              images.push({
+                id: crypto.randomUUID(),
+                base64Data: part.inlineData.data || "",
+                mimeType: part.inlineData.mimeType || "image/png",
+                prompt: config.prompt,
+                model: config.model,
+                aspectRatio: config.aspectRatio,
+                timestamp: Date.now(),
+              });
+            }
+          }
         }
       }
-    }
 
-    if (images.length === 0) {
-      throw new Error(
-        "Imagen 3 nao retornou imagens. Tente reformular o prompt."
-      );
-    }
-    return images;
-  } catch (error: any) {
-    console.error("Erro editImage Imagen 3:", error);
+      if (images.length > 0) return images;
 
-    if (error.message?.includes("SAFETY")) {
-      throw new Error(
-        "Bloqueado pelo filtro de seguranca. Tente outro prompt ou outra foto."
-      );
-    }
-    if (
-      error.message?.includes("API_KEY_INVALID") ||
-      error.message?.includes("401")
-    ) {
-      throw new Error(
-        "API Key invalida. Verifique sua chave e tente novamente."
-      );
-    }
+      // Model responded but no image - try next model
+      console.warn(`${modelName}: respondeu sem imagem, tentando proximo...`);
+    } catch (error: any) {
+      lastError = error;
+      const msg = error.message || "";
+      console.warn(`${modelName} falhou:`, msg);
 
-    // Se o modelo capability nao existir, tenta com generate
-    if (
-      error.message?.includes("not found") ||
-      error.message?.includes("NOT_FOUND")
-    ) {
-      console.log("capability-001 nao encontrado, tentando com generate-002...");
-      return editProductImageFallback(config, subjectRef, editPrompt);
-    }
-
-    throw new Error(
-      `Erro ao editar com Imagen 3: ${error.message || "Tente novamente."}`
-    );
-  }
-};
-
-// Fallback: tenta com modelo imagen-3.0-generate-002
-const editProductImageFallback = async (
-  config: GenerationConfig,
-  subjectRef: SubjectReferenceImage,
-  editPrompt: string
-): Promise<GeneratedImage[]> => {
-  const ai = getAI();
-
-  try {
-    const response = await ai.models.editImage({
-      model: "imagen-3.0-generate-002",
-      prompt: editPrompt,
-      referenceImages: [subjectRef],
-      config: {
-        numberOfImages: config.numberOfImages,
-        editMode: EditMode.EDIT_MODE_PRODUCT_IMAGE,
-      },
-    });
-
-    const images: GeneratedImage[] = [];
-    if (response.generatedImages) {
-      for (const img of response.generatedImages) {
-        if (img.image?.imageBytes) {
-          images.push({
-            id: crypto.randomUUID(),
-            base64Data: img.image.imageBytes,
-            mimeType: "image/png",
-            prompt: config.prompt,
-            model: config.model,
-            aspectRatio: config.aspectRatio,
-            timestamp: Date.now(),
-          });
-        }
+      // Model not found - try next
+      if (msg.includes("not found") || msg.includes("NOT_FOUND") || msg.includes("404")) {
+        continue;
       }
+      // Not supported - try next
+      if (msg.includes("not supported") || msg.includes("INVALID_ARGUMENT")) {
+        continue;
+      }
+      // Safety block - throw immediately
+      if (msg.includes("SAFETY") || msg.includes("blocked")) {
+        throw new Error("Bloqueado pelo filtro de seguranca. Tente outro prompt ou outra foto.");
+      }
+      // Auth error - throw immediately
+      if (msg.includes("API_KEY_INVALID") || msg.includes("401") || msg.includes("403")) {
+        throw new Error("API Key invalida. Verifique sua chave e tente novamente.");
+      }
+      // Return partial results if any
+      if (images.length > 0) return images;
+      // Other error - try next model
+      continue;
     }
-
-    if (images.length === 0) {
-      throw new Error(
-        "Imagen 3 nao retornou imagens. Tente reformular o prompt."
-      );
-    }
-    return images;
-  } catch (error: any) {
-    console.error("Erro editImage fallback:", error);
-    if (error.message?.includes("SAFETY")) {
-      throw new Error(
-        "Bloqueado pelo filtro de seguranca. Tente outro prompt ou outra foto."
-      );
-    }
-    throw new Error(
-      `Erro Imagen 3: ${error.message || "Tente novamente."}`
-    );
   }
+
+  // All models failed
+  const errorDetail = lastError?.message || "Nenhum modelo disponivel";
+  throw new Error(
+    `Nao foi possivel editar a imagem. ${errorDetail}. Verifique se sua API Key tem acesso a geracao de imagens.`
+  );
 };
 
 // ============================================================
-// IMAGEN 3.0 - GENERATE FROM PROMPT (sem referencia)
+// GERAR IMAGEM SEM REFERENCIA
+// Usa Imagen 3 generateImages (funciona na API gratuita)
 // ============================================================
 const generateFromPrompt = async (
   config: GenerationConfig
@@ -222,28 +203,80 @@ const generateFromPrompt = async (
     }
 
     if (images.length === 0) {
-      throw new Error(
-        "Nenhuma imagem gerada. Tente reformular seu prompt."
-      );
+      throw new Error("Nenhuma imagem gerada. Tente reformular seu prompt.");
     }
     return images;
   } catch (error: any) {
-    console.error("Erro generateImages Imagen 3:", error);
-    if (error.message?.includes("SAFETY")) {
-      throw new Error(
-        "Prompt bloqueado pelo filtro de seguranca. Tente reformular."
-      );
+    console.error("Erro generateImages:", error);
+    const msg = error.message || "";
+
+    if (msg.includes("SAFETY")) {
+      throw new Error("Prompt bloqueado pelo filtro de seguranca. Tente reformular.");
     }
-    if (
-      error.message?.includes("API_KEY_INVALID") ||
-      error.message?.includes("401")
-    ) {
-      throw new Error(
-        "API Key invalida. Verifique sua chave e tente novamente."
-      );
+    if (msg.includes("API_KEY_INVALID") || msg.includes("401")) {
+      throw new Error("API Key invalida. Verifique sua chave e tente novamente.");
     }
-    throw new Error(
-      `Erro Imagen 3: ${error.message || "Tente novamente."}`
-    );
+
+    // Fallback: try generateContent with Gemini if Imagen fails
+    console.log("Imagen falhou, tentando Gemini generateContent...");
+    return generateFromPromptFallback(config);
   }
+};
+
+// Fallback: use Gemini generateContent for text-to-image
+const generateFromPromptFallback = async (
+  config: GenerationConfig
+): Promise<GeneratedImage[]> => {
+  const ai = getAI();
+  const images: GeneratedImage[] = [];
+
+  const aspectHint =
+    config.aspectRatio !== "1:1"
+      ? ` A imagem deve ter proporcao ${config.aspectRatio}.`
+      : "";
+
+  let lastError: any = null;
+
+  for (const modelName of IMAGE_GEN_MODELS) {
+    try {
+      for (let i = 0; i < config.numberOfImages; i++) {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: `Gere uma imagem com base neste prompt. Responda APENAS com a imagem.${aspectHint}\n\nPrompt: ${config.prompt}`,
+          config: {
+            responseModalities: [Modality.IMAGE, Modality.TEXT],
+          },
+        });
+
+        if (response.candidates?.[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+              images.push({
+                id: crypto.randomUUID(),
+                base64Data: part.inlineData.data || "",
+                mimeType: part.inlineData.mimeType || "image/png",
+                prompt: config.prompt,
+                model: config.model,
+                aspectRatio: config.aspectRatio,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+      }
+      if (images.length > 0) return images;
+    } catch (error: any) {
+      lastError = error;
+      const msg = error.message || "";
+      if (msg.includes("not found") || msg.includes("NOT_FOUND") || msg.includes("not supported")) continue;
+      if (msg.includes("SAFETY")) throw new Error("Prompt bloqueado. Tente reformular.");
+      if (msg.includes("API_KEY_INVALID") || msg.includes("401")) throw new Error("API Key invalida.");
+      if (images.length > 0) return images;
+      continue;
+    }
+  }
+
+  throw new Error(
+    `Erro ao gerar imagem: ${lastError?.message || "Nenhum modelo disponivel"}. Tente outro prompt.`
+  );
 };
