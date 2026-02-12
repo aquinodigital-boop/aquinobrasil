@@ -4,8 +4,9 @@ import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { ImageCountSelector } from './components/ImageCountSelector';
 import { PromptInput } from './components/PromptInput';
 import { ImageGallery } from './components/ImageGallery';
-import { ApiKeyModal, getStoredApiKey, clearApiKey } from './components/ApiKeyModal';
-import { generateImages, setApiKey } from './services/geminiService';
+import { ApiKeyModal, getStoredAuthConfig, clearAuthConfig } from './components/ApiKeyModal';
+import type { AuthConfig } from './components/ApiKeyModal';
+import { generateImages, setAuthConfig } from './services/geminiService';
 import type { AspectRatio, GenerationSession, ReferenceImage } from './types';
 
 const App: React.FC = () => {
@@ -17,28 +18,28 @@ const App: React.FC = () => {
   const [showConfig, setShowConfig] = useState(false);
   const galleryRef = useRef<HTMLDivElement>(null);
 
-  // Check for stored API key or env var on mount
+  // Check for stored auth config or env var on mount
   useEffect(() => {
     const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
     if (envKey) {
-      setApiKey(envKey);
+      setAuthConfig({ mode: 'ai-studio', apiKey: envKey });
       setApiKeyReady(true);
       return;
     }
-    const storedKey = getStoredApiKey();
-    if (storedKey) {
-      setApiKey(storedKey);
+    const stored = getStoredAuthConfig();
+    if (stored) {
+      setAuthConfig(stored);
       setApiKeyReady(true);
     }
   }, []);
 
-  const handleApiKeySet = (key: string) => {
-    setApiKey(key);
+  const handleAuthSet = (config: AuthConfig) => {
+    setAuthConfig(config);
     setApiKeyReady(true);
   };
 
   const handleLogout = () => {
-    clearApiKey();
+    clearAuthConfig();
     setApiKeyReady(false);
     setSessions([]);
   };
@@ -92,8 +93,8 @@ const App: React.FC = () => {
               : s
           )
         );
-        if (errorMsg.includes('API Key invalida') || errorMsg.includes('API_KEY_INVALID')) {
-          clearApiKey();
+        if (errorMsg.includes('invalida') || errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('expiradas')) {
+          clearAuthConfig();
           setApiKeyReady(false);
         }
       } finally {
@@ -104,7 +105,7 @@ const App: React.FC = () => {
   );
 
   if (!apiKeyReady) {
-    return <ApiKeyModal onApiKeySet={handleApiKeySet} />;
+    return <ApiKeyModal onAuthSet={handleAuthSet} />;
   }
 
   return (
