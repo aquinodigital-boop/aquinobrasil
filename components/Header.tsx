@@ -19,13 +19,13 @@ export const Header: React.FC<HeaderProps> = ({ onLogout }) => {
               Nano Banana Pro
             </h1>
             <p className="text-[10px] text-slate-500 font-medium uppercase tracking-widest">
-              Gerador de Imagens IA
+              Imagen 3 &middot; Gerador de Imagens
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-            <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">Gemini</span>
+          <div className="px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20">
+            <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider">Imagen 3</span>
           </div>
           {onLogout && (
             <div className="relative">
