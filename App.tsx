@@ -4,13 +4,12 @@ import { AspectRatioSelector } from './components/AspectRatioSelector';
 import { ImageCountSelector } from './components/ImageCountSelector';
 import { PromptInput } from './components/PromptInput';
 import { ImageGallery } from './components/ImageGallery';
-import { ApiKeyModal, getStoredAuthConfig, clearAuthConfig } from './components/ApiKeyModal';
-import type { AuthConfig } from './components/ApiKeyModal';
-import { generateImages, setAuthConfig } from './services/geminiService';
+import { ApiKeyModal, getStoredApiKey, clearApiKey } from './components/ApiKeyModal';
+import { generateImages, setApiKey } from './services/geminiService';
 import type { AspectRatio, GenerationSession, ReferenceImage } from './types';
 
 const App: React.FC = () => {
-  const [apiKeyReady, setApiKeyReady] = useState(false);
+  const [ready, setReady] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
   const [imageCount, setImageCount] = useState(1);
   const [sessions, setSessions] = useState<GenerationSession[]>([]);
@@ -18,144 +17,68 @@ const App: React.FC = () => {
   const [showConfig, setShowConfig] = useState(false);
   const galleryRef = useRef<HTMLDivElement>(null);
 
-  // Check for stored auth config or env var on mount
   useEffect(() => {
     const envKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-    if (envKey) {
-      setAuthConfig({ mode: 'ai-studio', apiKey: envKey });
-      setApiKeyReady(true);
-      return;
-    }
-    const stored = getStoredAuthConfig();
-    if (stored) {
-      setAuthConfig(stored);
-      setApiKeyReady(true);
-    }
+    if (envKey) { setApiKey(envKey); setReady(true); return; }
+    const stored = getStoredApiKey();
+    if (stored) { setApiKey(stored); setReady(true); }
   }, []);
 
-  const handleAuthSet = (config: AuthConfig) => {
-    setAuthConfig(config);
-    setApiKeyReady(true);
-  };
+  const handleLogout = () => { clearApiKey(); setReady(false); setSessions([]); };
 
-  const handleLogout = () => {
-    clearAuthConfig();
-    setApiKeyReady(false);
-    setSessions([]);
-  };
-
-  // Scroll to gallery when new session is added
   useEffect(() => {
     if (sessions.length > 0 && galleryRef.current) {
-      setTimeout(() => {
-        galleryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 300);
+      setTimeout(() => galleryRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
     }
   }, [sessions.length]);
 
-  const handleGenerate = useCallback(
-    async (prompt: string, referenceImage?: ReferenceImage) => {
-      const sessionId = crypto.randomUUID();
-      const config = {
-        model: 'PRO' as const,
-        prompt,
-        aspectRatio,
-        numberOfImages: imageCount,
-        referenceImage,
-      };
+  const handleGenerate = useCallback(async (prompt: string, referenceImage?: ReferenceImage) => {
+    const sessionId = crypto.randomUUID();
+    const config = { model: 'PRO' as const, prompt, aspectRatio, numberOfImages: imageCount, referenceImage };
+    setSessions(prev => [...prev, { id: sessionId, config, images: [], timestamp: Date.now(), status: 'generating' }]);
+    setIsGenerating(true);
 
-      const newSession: GenerationSession = {
-        id: sessionId,
-        config,
-        images: [],
-        timestamp: Date.now(),
-        status: 'generating',
-      };
+    try {
+      const images = await generateImages(config);
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, images, status: 'completed' as const } : s));
+    } catch (error: any) {
+      const msg = error.message || 'Erro desconhecido';
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'error' as const, error: msg } : s));
+      if (msg.includes('invalida') || msg.includes('API_KEY_INVALID')) { clearApiKey(); setReady(false); }
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [aspectRatio, imageCount]);
 
-      setSessions((prev) => [...prev, newSession]);
-      setIsGenerating(true);
-
-      try {
-        const images = await generateImages(config);
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === sessionId
-              ? { ...s, images, status: 'completed' as const }
-              : s
-          )
-        );
-      } catch (error: any) {
-        const errorMsg = error.message || 'Erro desconhecido ao gerar imagens';
-        setSessions((prev) =>
-          prev.map((s) =>
-            s.id === sessionId
-              ? { ...s, status: 'error' as const, error: errorMsg }
-              : s
-          )
-        );
-        if (errorMsg.includes('invalida') || errorMsg.includes('API_KEY_INVALID') || errorMsg.includes('expiradas')) {
-          clearAuthConfig();
-          setApiKeyReady(false);
-        }
-      } finally {
-        setIsGenerating(false);
-      }
-    },
-    [aspectRatio, imageCount]
-  );
-
-  if (!apiKeyReady) {
-    return <ApiKeyModal onAuthSet={handleAuthSet} />;
-  }
+  if (!ready) return <ApiKeyModal onApiKeySet={(k) => { setApiKey(k); setReady(true); }} />;
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-950">
       <Header onLogout={handleLogout} />
-
       <main className="flex-1 flex flex-col max-w-lg mx-auto w-full">
         <div className="px-4 pt-4 pb-2 flex flex-col gap-4">
-
-          {/* Config Toggle */}
-          <button
-            type="button"
-            onClick={() => setShowConfig(!showConfig)}
-            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-800 text-xs text-slate-400 hover:text-slate-300 hover:border-gray-700 active:bg-gray-900 transition-all"
-          >
+          <button type="button" onClick={() => setShowConfig(!showConfig)}
+            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl bg-gray-900/60 border border-gray-800 text-xs text-slate-400 hover:text-slate-300 active:bg-gray-900 transition-all">
             <span className="font-semibold uppercase tracking-wider">
-              {aspectRatio} &middot; {imageCount}{' '}
-              {imageCount === 1 ? 'imagem' : 'imagens'} &middot; Imagen 3
+              {aspectRatio} &middot; {imageCount} {imageCount === 1 ? 'imagem' : 'imagens'} &middot; Imagen 3
             </span>
-            <svg
-              className={`w-4 h-4 transition-transform duration-300 ${showConfig ? 'rotate-180' : ''}`}
-              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-            >
+            <svg className={`w-4 h-4 transition-transform duration-300 ${showConfig ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
             </svg>
           </button>
-
-          {/* Collapsible Config */}
-          <div className={`overflow-hidden transition-all duration-300 ease-out ${showConfig ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className={`overflow-hidden transition-all duration-300 ${showConfig ? 'max-h-64 opacity-100' : 'max-h-0 opacity-0'}`}>
             <div className="flex flex-col gap-4 pb-2">
               <AspectRatioSelector selectedRatio={aspectRatio} onRatioChange={setAspectRatio} disabled={isGenerating} />
               <ImageCountSelector count={imageCount} onCountChange={setImageCount} disabled={isGenerating} />
             </div>
           </div>
-
-          {/* Prompt + Reference Image (main feature) */}
-          <PromptInput
-            onSubmit={handleGenerate}
-            disabled={isGenerating}
-            modelColor="amber"
-          />
+          <PromptInput onSubmit={handleGenerate} disabled={isGenerating} modelColor="amber" />
         </div>
-
         <div className="mx-4 my-2 border-t border-gray-800/50" />
-
         <div ref={galleryRef} className="flex-1 px-4 pb-8">
           <ImageGallery sessions={sessions} />
         </div>
       </main>
-
       <div className="h-safe-bottom" />
     </div>
   );
