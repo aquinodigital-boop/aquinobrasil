@@ -18,8 +18,8 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ sessions }) => {
         <p className="text-slate-500 text-sm font-medium text-center">
           Suas imagens geradas aparecerao aqui
         </p>
-        <p className="text-slate-600 text-xs mt-1 text-center">
-          Escreva um prompt e clique em Gerar Imagem
+        <p className="text-slate-600 text-xs mt-1 text-center max-w-[260px]">
+          Escreva um prompt e clique em Gerar Imagem. Voce tambem pode enviar uma foto de referencia!
         </p>
       </div>
     );
@@ -33,9 +33,29 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ sessions }) => {
       {sortedSessions.map((session) => (
         <div key={session.id} className="flex flex-col gap-3">
           {/* Session header */}
-          <div className="flex items-start gap-2 px-1">
+          <div className="flex items-start gap-2.5 px-1">
+            {/* Reference image thumbnail */}
+            {session.config.referenceImage && (
+              <div className="relative flex-shrink-0">
+                <img
+                  src={session.config.referenceImage.base64Data}
+                  alt="Referencia"
+                  className="w-10 h-10 object-cover rounded-lg border border-gray-700"
+                />
+                <div className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-violet-600 flex items-center justify-center">
+                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.44a4.5 4.5 0 00-6.364-6.364L5.25 7.688" />
+                  </svg>
+                </div>
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+                {session.config.referenceImage && (
+                  <span className="inline-flex items-center gap-1 mr-1.5 px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400 text-[9px] font-bold uppercase align-middle">
+                    REF
+                  </span>
+                )}
                 {session.config.prompt}
               </p>
               <div className="flex items-center gap-2 mt-1">
@@ -68,7 +88,9 @@ export const ImageGallery: React.FC<ImageGalleryProps> = ({ sessions }) => {
                     <div className="relative">
                       <div className="w-8 h-8 rounded-full border-2 border-slate-700 border-t-indigo-500 animate-spin" />
                     </div>
-                    <span className="text-[10px] text-slate-600 font-medium">Gerando...</span>
+                    <span className="text-[10px] text-slate-600 font-medium">
+                      {session.config.referenceImage ? 'Editando...' : 'Gerando...'}
+                    </span>
                   </div>
                 </div>
               ))}

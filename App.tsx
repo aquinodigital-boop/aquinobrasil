@@ -7,7 +7,7 @@ import { PromptInput } from './components/PromptInput';
 import { ImageGallery } from './components/ImageGallery';
 import { ApiKeyModal, getStoredApiKey, clearApiKey } from './components/ApiKeyModal';
 import { generateImages, setApiKey } from './services/geminiService';
-import type { ModelType, AspectRatio, GenerationSession } from './types';
+import type { ModelType, AspectRatio, GenerationSession, ReferenceImage } from './types';
 
 const App: React.FC = () => {
   const [apiKeyReady, setApiKeyReady] = useState(false);
@@ -55,13 +55,14 @@ const App: React.FC = () => {
   }, [sessions.length]);
 
   const handleGenerate = useCallback(
-    async (prompt: string) => {
+    async (prompt: string, referenceImage?: ReferenceImage) => {
       const sessionId = crypto.randomUUID();
       const config = {
         model,
         prompt,
         aspectRatio,
         numberOfImages: imageCount,
+        referenceImage,
       };
 
       // Add generating session
@@ -174,7 +175,7 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          {/* Prompt Input */}
+          {/* Prompt Input with Reference Image */}
           <PromptInput
             onSubmit={handleGenerate}
             disabled={isGenerating}
