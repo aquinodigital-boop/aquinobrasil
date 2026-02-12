@@ -2,16 +2,41 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎬</text></svg>" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VideoComposer - Composição de Vídeos Curtos</title>
-    <meta name="description" content="Combine vídeos curtos em conteúdo profissional para redes sociais com transições suaves." />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#127820;</text></svg>" />
+    <link rel="apple-touch-icon" href="icon-192.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#030712" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Nano Banana" />
+    <meta name="description" content="Gerador de imagens por IA usando Gemini - Modos PRO (Imagen 3) e FLASH (Gemini Flash)" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="manifest" href="manifest.json" />
+    <title>Nano Banana Pro - Gerador de Imagens IA</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script type="module" crossorigin src="/aquinobrasil/assets/index-mcUJ2KF6.js"></script>
-    <link rel="stylesheet" crossorigin href="/aquinobrasil/assets/index-BAmlY5Xc.css">
+
+    <script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.25.0"
+  }
+}
+</script>
+    <script type="module" crossorigin src="/aquinobrasil/assets/index-J7NaDrjk.js"></script>
+    <link rel="stylesheet" crossorigin href="/aquinobrasil/assets/index-Diy2zj0M.css">
   </head>
-  <body class="bg-gray-950 text-slate-200 font-sans antialiased">
-    <div class="absolute inset-0 -z-10 h-full w-full bg-gray-950 bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:14px_24px]"></div>
+  <body class="bg-gray-950 text-slate-200 font-sans antialiased overscroll-none">
     <div id="root"></div>
+    <script>
+      // Register service worker for PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('sw.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>
