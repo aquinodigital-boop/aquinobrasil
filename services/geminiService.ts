@@ -1,4 +1,4 @@
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import type { GenerationConfig, GeneratedImage } from "../types";
 
 let _apiKey: string | null = null;
@@ -22,14 +22,13 @@ export const generateImages = async (
   if (config.referenceImage) {
     return editWithReference(config);
   }
-  return generateFromPrompt(config);
+  return generateWithImagen(config);
 };
 
 // ============================================================
-// GERAR DO ZERO (sem referencia) — Imagen 3
-// Usa generateImages com imagen-3.0-generate-002
+// GERAR DO ZERO — Imagen 3 generateImages
 // ============================================================
-const generateFromPrompt = async (
+const generateWithImagen = async (
   config: GenerationConfig
 ): Promise<GeneratedImage[]> => {
   const ai = getAI();
@@ -67,27 +66,33 @@ const generateFromPrompt = async (
 };
 
 // ============================================================
-// EDITAR COM FOTO DE REFERENCIA — Gemini generateContent
-// Envia a foto do produto + prompt descrevendo cenario
-// O modelo gera uma nova imagem preservando o produto
+// EDITAR COM REFERENCIA — 2 etapas
+//
+// Etapa 1: Gemini ANALISA a foto do produto (texto)
+//   → cria descricao ultra-detalhada do produto
+//
+// Etapa 2: Imagen 3 GERA a imagem nova
+//   → usando a descricao do produto + cenario desejado
+//
+// Assim usamos apenas APIs que funcionam com API Key normal
 // ============================================================
-const SYSTEM_PROMPT = `Voce e um editor profissional de fotos de produto para e-commerce.
 
-Sua tarefa: receber a foto de um produto e gerar uma NOVA IMAGEM com o produto em um cenario diferente.
+const ANALYSIS_PROMPT = `Voce e um especialista em descricao de produtos para fotografia profissional.
 
-REGRAS OBRIGATORIAS:
-1. O PRODUTO da foto DEVE aparecer na imagem gerada com TOTAL FIDELIDADE — mesma forma, cores, rotulo, texto, proporcoes e todos os detalhes.
-2. NUNCA altere, distorca ou reinterprete o produto. Ele deve ser uma REPLICA EXATA.
-3. APENAS altere: fundo, cenario, superficie, iluminacao, elementos decorativos ao redor.
-4. A integracao produto+cenario deve ser NATURAL — sombras coerentes, iluminacao consistente.
-5. Qualidade: fotografia profissional, fotorrealista, alta resolucao, foco no produto.
+Analise esta imagem de produto e crie uma descricao EXTREMAMENTE detalhada e precisa, incluindo:
 
-Responda APENAS com a imagem. Sem texto.`;
+1. TIPO DE PRODUTO: o que e exatamente
+2. FORMATO/FORMA: formato exato da embalagem ou objeto (cilindrico, retangular, garrafa, caixa, etc.)
+3. DIMENSOES APARENTES: proporcoes relativas (largo, alto, fino, etc.)
+4. CORES: todas as cores visíveis, com tons exatos (vermelho escarlate, azul marinho, branco perolado, etc.)
+5. ROTULO/TEXTO: TODOS os textos visíveis no produto, marca, nome, descricoes
+6. MATERIAIS: aparencia do material (plastico brilhante, vidro fosco, metal escovado, papelao, etc.)
+7. DETALHES VISUAIS: logotipos, icones, padroes, texturas, acabamentos, selos, tampas, aberturas
+8. POSICAO/ANGULO: como o produto esta posicionado na foto
 
-const MODELS = [
-  "gemini-2.0-flash-exp",
-  "gemini-2.0-flash",
-];
+A descricao deve ser tao detalhada que alguém conseguiria recriar visualmente o produto com total fidelidade apenas lendo o texto.
+
+Responda APENAS com a descricao em portugues. Sem introducoes nem conclusoes.`;
 
 const editWithReference = async (
   config: GenerationConfig
@@ -95,78 +100,113 @@ const editWithReference = async (
   const ai = getAI();
   const ref = config.referenceImage!;
 
+  // Extrair base64 puro
   const rawBase64 = ref.base64Data.includes(",")
     ? ref.base64Data.split(",")[1]
     : ref.base64Data;
   const mimeType = ref.mimeType || "image/jpeg";
 
-  const aspectHint = config.aspectRatio !== "1:1"
-    ? ` Proporcao da imagem final: ${config.aspectRatio}.`
-    : "";
+  // ── ETAPA 1: Gemini analisa a foto do produto ──
+  let productDescription: string;
 
-  const images: GeneratedImage[] = [];
-  let lastError: any = null;
+  try {
+    const analysisResponse = await ai.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { text: ANALYSIS_PROMPT },
+          { inlineData: { mimeType, data: rawBase64 } },
+        ],
+      }],
+    });
 
-  for (const model of MODELS) {
+    productDescription = analysisResponse.text?.trim() || "";
+
+    if (!productDescription) {
+      throw new Error("Gemini nao conseguiu analisar a imagem.");
+    }
+  } catch (error: any) {
+    console.error("Erro na analise:", error);
+
+    // Tenta modelo alternativo
     try {
-      for (let i = 0; i < config.numberOfImages; i++) {
-        const response = await ai.models.generateContent({
-          model,
-          contents: [{
-            role: "user",
-            parts: [
-              { text: SYSTEM_PROMPT },
-              { inlineData: { mimeType, data: rawBase64 } },
-              { text: `CENARIO DESEJADO: ${config.prompt}${aspectHint}\n\nGere a imagem agora.` },
-            ],
-          }],
-          config: {
-            responseModalities: [Modality.IMAGE, Modality.TEXT],
-          },
-        });
-
-        if (response.candidates?.[0]?.content?.parts) {
-          for (const part of response.candidates[0].content.parts) {
-            if (part.inlineData) {
-              images.push({
-                id: crypto.randomUUID(),
-                base64Data: part.inlineData.data || "",
-                mimeType: part.inlineData.mimeType || "image/png",
-                prompt: config.prompt,
-                model: config.model,
-                aspectRatio: config.aspectRatio,
-                timestamp: Date.now(),
-              });
-            }
-          }
-        }
-      }
-
-      if (images.length > 0) return images;
-    } catch (error: any) {
-      lastError = error;
-      const msg = error.message || "";
-      console.warn(`${model}:`, msg);
-
-      // Model not found — try next
-      if (msg.includes("not found") || msg.includes("NOT_FOUND") || msg.includes("not supported")) {
-        continue;
-      }
-      // Safety — throw
-      if (msg.includes("SAFETY") || msg.includes("blocked")) {
-        throw new Error("Bloqueado pelo filtro de seguranca. Tente outro prompt ou foto.");
-      }
-      // Auth — throw
-      if (msg.includes("API_KEY_INVALID") || msg.includes("401")) {
-        throw new Error("API Key invalida.");
-      }
-      // Other — try next
-      if (images.length > 0) return images;
-      continue;
+      const fallback = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: [{
+          role: "user",
+          parts: [
+            { text: ANALYSIS_PROMPT },
+            { inlineData: { mimeType, data: rawBase64 } },
+          ],
+        }],
+      });
+      productDescription = fallback.text?.trim() || "";
+      if (!productDescription) throw new Error("Sem descricao");
+    } catch {
+      throw new Error(
+        `Erro ao analisar a foto do produto: ${error.message || "Tente novamente."}`
+      );
     }
   }
 
-  throw new Error(
-    `Erro na edicao: ${lastError?.message || "Nenhum modelo gerou imagem"}. Tente outro prompt.`
-  );
+  // ── ETAPA 2: Imagen 3 gera a imagem com o produto no cenario ──
+  const aspectHint = config.aspectRatio !== "1:1"
+    ? ` Proporcao da imagem: ${config.aspectRatio}.`
+    : "";
+
+  const imagenPrompt = `Fotografia profissional fotorrealista de alta resolucao.
+
+PRODUTO (deve aparecer com TOTAL FIDELIDADE a esta descricao):
+${productDescription}
+
+CENARIO DESEJADO:
+${config.prompt}
+
+INSTRUCOES:
+- O produto descrito acima deve ser o elemento central da imagem, com todos os detalhes fielmente representados (cores, rotulos, textos, formato, materiais).
+- O cenario ao redor deve ser "${config.prompt}" com iluminacao natural e profissional.
+- Composicao fotografica premium, foco nitido no produto, profundidade de campo.
+- Sombras e reflexos coerentes entre produto e cenario.${aspectHint}`;
+
+  try {
+    const response = await ai.models.generateImages({
+      model: "imagen-3.0-generate-002",
+      prompt: imagenPrompt,
+      config: {
+        numberOfImages: config.numberOfImages,
+        aspectRatio: config.aspectRatio,
+      },
+    });
+
+    const images: GeneratedImage[] = [];
+    if (response.generatedImages) {
+      for (const img of response.generatedImages) {
+        if (img.image?.imageBytes) {
+          images.push({
+            id: crypto.randomUUID(),
+            base64Data: img.image.imageBytes,
+            mimeType: "image/png",
+            prompt: config.prompt,
+            model: config.model,
+            aspectRatio: config.aspectRatio,
+            timestamp: Date.now(),
+          });
+        }
+      }
+    }
+
+    if (images.length === 0) {
+      throw new Error("Imagen 3 nao gerou imagens. Tente outro cenario.");
+    }
+    return images;
+  } catch (error: any) {
+    console.error("Erro Imagen 3:", error);
+    if (error.message?.includes("SAFETY")) {
+      throw new Error("Bloqueado pelo filtro de seguranca. Tente outro prompt.");
+    }
+    throw new Error(
+      `Erro ao gerar: ${error.message || "Tente novamente."}`
+    );
+  }
 };
