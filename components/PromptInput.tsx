@@ -217,8 +217,7 @@ export const PromptInput: React.FC<PromptInputProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
-                capture="environment"
+                accept="image/png,image/jpeg,image/webp,image/gif,image/*"
                 onChange={handleFileSelect}
                 className="hidden"
               />
