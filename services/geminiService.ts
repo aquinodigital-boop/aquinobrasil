@@ -89,7 +89,14 @@ const generateWithImagen = async (
 /**
  * FLASH mode - Uses Gemini 2.0 Flash with native image generation
  * Faster, generates one image at a time via content generation
+ * Tries multiple model names for compatibility
  */
+const FLASH_MODELS = [
+  "gemini-2.0-flash-exp",
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-latest",
+];
+
 const generateWithFlash = async (
   config: GenerationConfig
 ): Promise<GeneratedImage[]> => {
@@ -101,56 +108,71 @@ const generateWithFlash = async (
       ? ` A imagem deve ter proporcao ${config.aspectRatio}.`
       : "";
 
-  try {
-    for (let i = 0; i < config.numberOfImages; i++) {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-preview-image-generation",
-        contents: `Gere uma imagem com base neste prompt. Responda APENAS com a imagem, sem texto.${aspectRatioHint}\n\nPrompt: ${config.prompt}`,
-        config: {
-          responseModalities: ["TEXT", "IMAGE"],
-        },
-      });
+  let lastError: any = null;
 
-      if (response.candidates?.[0]?.content?.parts) {
-        for (const part of response.candidates[0].content.parts) {
-          if (part.inlineData) {
-            images.push({
-              id: crypto.randomUUID(),
-              base64Data: part.inlineData.data || "",
-              mimeType: part.inlineData.mimeType || "image/png",
-              prompt: config.prompt,
-              model: "FLASH",
-              aspectRatio: config.aspectRatio,
-              timestamp: Date.now(),
-            });
+  for (const modelName of FLASH_MODELS) {
+    try {
+      for (let i = 0; i < config.numberOfImages; i++) {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: `Gere uma imagem com base neste prompt. Responda APENAS com a imagem, sem texto.${aspectRatioHint}\n\nPrompt: ${config.prompt}`,
+          config: {
+            responseModalities: ["TEXT", "IMAGE"],
+          },
+        });
+
+        if (response.candidates?.[0]?.content?.parts) {
+          for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+              images.push({
+                id: crypto.randomUUID(),
+                base64Data: part.inlineData.data || "",
+                mimeType: part.inlineData.mimeType || "image/png",
+                prompt: config.prompt,
+                model: "FLASH",
+                aspectRatio: config.aspectRatio,
+                timestamp: Date.now(),
+              });
+            }
           }
         }
       }
-    }
 
-    if (images.length === 0) {
-      throw new Error("Nenhuma imagem foi gerada. Tente reformular seu prompt.");
-    }
-
-    return images;
-  } catch (error: any) {
-    console.error("Erro Gemini Flash:", error);
-    // If we got some images before the error, return what we have
-    if (images.length > 0) {
-      return images;
-    }
-    if (error.message?.includes("SAFETY")) {
+      // If we got images, return them
+      if (images.length > 0) {
+        return images;
+      }
+    } catch (error: any) {
+      lastError = error;
+      console.warn(`Modelo ${modelName} falhou:`, error.message);
+      // If it's a model-not-found error, try the next model
+      if (error.message?.includes("not found") || error.message?.includes("NOT_FOUND") || error.message?.includes("404")) {
+        continue;
+      }
+      // For other errors (safety, auth), throw immediately
+      if (error.message?.includes("SAFETY")) {
+        throw new Error(
+          "O prompt foi bloqueado pelo filtro de seguranca. Tente reformular."
+        );
+      }
+      if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("401")) {
+        throw new Error(
+          "API Key invalida. Verifique sua chave e tente novamente."
+        );
+      }
+      // If we got some images before the error, return them
+      if (images.length > 0) {
+        return images;
+      }
       throw new Error(
-        "O prompt foi bloqueado pelo filtro de seguranca. Tente reformular."
+        error.message || "Erro ao gerar imagem com Gemini Flash. Tente novamente."
       );
     }
-    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("401")) {
-      throw new Error(
-        "API Key invalida. Verifique sua chave e tente novamente."
-      );
-    }
-    throw new Error(
-      error.message || "Erro ao gerar imagem com Gemini Flash. Tente novamente."
-    );
   }
+
+  // All models failed
+  console.error("Todos os modelos Flash falharam:", lastError);
+  throw new Error(
+    lastError?.message || "Nenhum modelo Flash disponivel. Tente o modo PRO."
+  );
 };
