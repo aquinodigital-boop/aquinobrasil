@@ -1,41 +1,20 @@
-# Nano Banana Pro - Gerador de Imagens IA
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-App mobile para gerar imagens a partir de prompts de texto, usando a API do Google Gemini.
+# Run and deploy your AI Studio app
 
-## Funcionalidades
+This contains everything you need to run your app locally.
 
-- **Modo PRO** - Usa o modelo Imagen 3 (`imagen-3.0-generate-002`) para gerar imagens de alta qualidade
-- **Modo FLASH** - Usa o Gemini 2.0 Flash com geracao nativa de imagens para resultados rapidos
-- **Configuracoes** - Escolha proporcao (1:1, 4:3, 3:4, 16:9, 9:16) e quantidade de imagens (1-4)
-- **Interface Mobile** - UI otimizada para dispositivos moveis com design moderno e dark theme
-- **Download e Compartilhamento** - Baixe ou compartilhe as imagens geradas diretamente
-- **Galeria** - Historico de todas as geracoes na sessao
+View your app in AI Studio: https://ai.studio/apps/drive/1zNvg3ScIV0f1YfbXQ5P6fhRmxp1hmie6
 
-## Como Executar
+## Run Locally
 
-**Pre-requisitos:** Node.js
+**Prerequisites:**  Node.js
 
-1. Instale as dependencias:
-   ```bash
-   npm install
-   ```
 
-2. Configure a chave da API do Gemini no arquivo `.env.local`:
-   ```
-   GEMINI_API_KEY=sua_chave_aqui
-   ```
-
-3. Execute o app:
-   ```bash
-   npm run dev
-   ```
-
-4. Acesse `http://localhost:3000` no navegador
-
-## Tecnologias
-
-- React 19
-- TypeScript
-- Tailwind CSS
-- Vite
-- Google Gemini API (`@google/genai`)
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

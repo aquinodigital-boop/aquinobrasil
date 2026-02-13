@@ -1,212 +1,161 @@
 import { GoogleGenAI } from "@google/genai";
-import type { GenerationConfig, GeneratedImage } from "../types";
+import type { PhotoAgentData } from '../types';
 
-let _apiKey: string | null = null;
+// Definindo tipo localmente para evitar problemas de importação
+interface Part {
+  text?: string;
+  inlineData?: {
+    mimeType: string;
+    data: string;
+  };
+}
 
-export const setApiKey = (key: string) => {
-  _apiKey = key;
-};
-
-const getAI = (): GoogleGenAI => {
-  const apiKey = _apiKey || process.env.API_KEY || process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("API Key nao configurada.");
-  return new GoogleGenAI({ apiKey });
-};
-
-// ============================================================
-// ENTRADA PRINCIPAL
-// ============================================================
-export const generateImages = async (
-  config: GenerationConfig
-): Promise<GeneratedImage[]> => {
-  if (config.referenceImage) {
-    return editWithReference(config);
-  }
-  return generateWithImagen(config);
-};
-
-// ============================================================
-// GERAR DO ZERO — Imagen 3 generateImages
-// ============================================================
-const generateWithImagen = async (
-  config: GenerationConfig
-): Promise<GeneratedImage[]> => {
-  const ai = getAI();
-
-  const response = await ai.models.generateImages({
-    model: "imagen-3.0-generate-002",
-    prompt: config.prompt,
-    config: {
-      numberOfImages: config.numberOfImages,
-      aspectRatio: config.aspectRatio,
+const fileToGenerativePart = (base64Data: string, defaultMimeType: string): Part => {
+  const match = base64Data.match(/data:(image\/[a-zA-Z]+);base64,/);
+  const mimeType = match ? match[1] : defaultMimeType;
+  const data = base64Data.split(',')[1];
+  return {
+    inlineData: {
+      mimeType,
+      data,
     },
-  });
-
-  const images: GeneratedImage[] = [];
-  if (response.generatedImages) {
-    for (const img of response.generatedImages) {
-      if (img.image?.imageBytes) {
-        images.push({
-          id: crypto.randomUUID(),
-          base64Data: img.image.imageBytes,
-          mimeType: "image/png",
-          prompt: config.prompt,
-          model: config.model,
-          aspectRatio: config.aspectRatio,
-          timestamp: Date.now(),
-        });
-      }
-    }
-  }
-
-  if (images.length === 0) {
-    throw new Error("Nenhuma imagem gerada. Tente reformular seu prompt.");
-  }
-  return images;
+  };
 };
 
-// ============================================================
-// EDITAR COM REFERENCIA — 2 etapas
-//
-// Etapa 1: Gemini ANALISA a foto do produto (texto)
-//   → cria descricao ultra-detalhada do produto
-//
-// Etapa 2: Imagen 3 GERA a imagem nova
-//   → usando a descricao do produto + cenario desejado
-//
-// Assim usamos apenas APIs que funcionam com API Key normal
-// ============================================================
-
-const ANALYSIS_PROMPT = `Voce e um especialista em descricao de produtos para fotografia profissional.
-
-Analise esta imagem de produto e crie uma descricao EXTREMAMENTE detalhada e precisa, incluindo:
-
-1. TIPO DE PRODUTO: o que e exatamente
-2. FORMATO/FORMA: formato exato da embalagem ou objeto (cilindrico, retangular, garrafa, caixa, etc.)
-3. DIMENSOES APARENTES: proporcoes relativas (largo, alto, fino, etc.)
-4. CORES: todas as cores visíveis, com tons exatos (vermelho escarlate, azul marinho, branco perolado, etc.)
-5. ROTULO/TEXTO: TODOS os textos visíveis no produto, marca, nome, descricoes
-6. MATERIAIS: aparencia do material (plastico brilhante, vidro fosco, metal escovado, papelao, etc.)
-7. DETALHES VISUAIS: logotipos, icones, padroes, texturas, acabamentos, selos, tampas, aberturas
-8. POSICAO/ANGULO: como o produto esta posicionado na foto
-
-A descricao deve ser tao detalhada que alguém conseguiria recriar visualmente o produto com total fidelidade apenas lendo o texto.
-
-Responda APENAS com a descricao em portugues. Sem introducoes nem conclusoes.`;
-
-const editWithReference = async (
-  config: GenerationConfig
-): Promise<GeneratedImage[]> => {
-  const ai = getAI();
-  const ref = config.referenceImage!;
-
-  // Extrair base64 puro
-  const rawBase64 = ref.base64Data.includes(",")
-    ? ref.base64Data.split(",")[1]
-    : ref.base64Data;
-  const mimeType = ref.mimeType || "image/jpeg";
-
-  // ── ETAPA 1: Gemini analisa a foto do produto ──
-  let productDescription: string;
-
-  try {
-    const analysisResponse = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: [{
-        role: "user",
-        parts: [
-          { text: ANALYSIS_PROMPT },
-          { inlineData: { mimeType, data: rawBase64 } },
-        ],
-      }],
-    });
-
-    productDescription = analysisResponse.text?.trim() || "";
-
-    if (!productDescription) {
-      throw new Error("Gemini nao conseguiu analisar a imagem.");
+export const generatePrompts = async (data: PhotoAgentData & { productName: string }): Promise<string[]> => {
+    if (!process.env.API_KEY) {
+      throw new Error("A variável de ambiente API_KEY não está definida.");
     }
-  } catch (error: any) {
-    console.error("Erro na analise:", error);
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    // Tenta modelo alternativo
+    const parts: Part[] = [
+      fileToGenerativePart(data.productImage, 'image/jpeg'),
+      { text: "Imagem de referência do produto. A embalagem gerada DEVE ser idêntica a esta." },
+    ];
+
+    if (data.logoImage) {
+      parts.push(fileToGenerativePart(data.logoImage, 'image/png'));
+      parts.push({ text: "Logo da loja para marca d'água." });
+    }
+    
+    const logoInstruction = data.logoImage 
+      ? `- Logo da Loja para Marca d'água: Fornecido. Instrução: Aplicar o logo fornecido como uma marca d'água sutil e transparente (ex: 50% de opacidade) no canto inferior direito de todas as imagens geradas.`
+      : `- Logo da Loja para Marca d'água: Não fornecido.`;
+    
+    const colorInstruction = data.hexColor
+      ? `- Cor do Conteúdo do Produto: ${data.hexColor}. Instrução: ESSENCIAL - Os prompts devem gerar imagens que mostrem o conteúdo do produto (tinta, líquido, pó, etc.) com essa cor exata em destaque. A cor da embalagem NÃO deve ser alterada. O foco é na cor do conteúdo sendo demonstrado (ex: um pincel com a tinta, um tecido tingido, ou o produto sendo aplicado).`
+      : `- Cor do Conteúdo do Produto: Não especificada.`;
+
+    // Verificação segura da marca
+    const brandName = data.productBrandName || "";
+    const isChamaroma = brandName.toUpperCase().includes("CHAMAROMA");
+    
+    let brandSpecificInstructions = "";
+    
+    if (isChamaroma) {
+      brandSpecificInstructions = `
+      🚨 DIRETRIZES OBRIGATÓRIAS PARA A MARCA "CHAMAROMA" (ALTA PRIORIDADE) 🚨
+      
+      Você DEVE seguir estas regras estritas para manter a identidade da marca:
+
+      1. **ESTÉTICA E ATMOSFERA:**
+         - A estética deve ser "RAW", AUTÊNTICA, ORGÂNICA e ter PERSONALIDADE.
+         - PROIBIDO ABSOLUTAMENTE criar cenas "clean", assépticas, minimalistas ao extremo, fundos brancos vazios ou estúdios perfeitos demais.
+         - Busque texturas reais (imperfeições são bem-vindas), iluminação dramática ou luz natural complexa, sombras e profundidade. A imagem deve parecer uma foto real tirada em um ambiente vivido, não um render 3D clínico.
+
+      2. **LISTA NEGRA DE ELEMENTOS (PROIBIDO UTILIZAR SOB QUALQUER CIRCUNSTÂNCIA):**
+         - ❌ LIVROS
+         - ❌ XÍCARAS (café, chá, etc.)
+         - ❌ CANECAS
+         - ❌ ÓCULOS (de grau ou sol)
+         - ❌ ITENS DE ESCRITÓRIO (laptops, canetas, cadernos)
+         - ❌ PLANTAS GENÉRICAS DE PLÁSTICO (use elementos naturais reais se necessário, como madeira seca, pedras, etc.)
+
+      3. **CENÁRIOS E CONTEXTO:**
+         - Evite composições que pareçam "banco de imagens" ou clichês de marketing.
+         - Use superfícies com textura rica: madeira de demolição, cimento queimado, pedra bruta, tecidos de linho amassados, metal envelhecido.
+         - O ambiente deve complementar o produto de forma visceral e tátil.
+      `;
+    }
+
+    const ultimatePrompt = `Fotografia de produto profissional e ultrarrealista do produto "${data.productName}", perfeitamente centralizado em um fundo infinito totalmente branco (#ffffff). **É crucial que a embalagem, incluindo rótulo, formato e cores, seja uma réplica exata da imagem de referência fornecida.** Iluminação de estúdio cinematográfica, suave e difusa para destacar os detalhes sem criar sombras duras. Foco nítido, textura impecável, qualidade 8k. A imagem deve ser limpa, premium e ideal para a capa de um anúncio no Mercado Livre.`;
+
+    const basePrompt = `
+      Você é um diretor de arte e especialista em marketing visual para e-commerce.
+      Sua missão é criar 5 prompts de imagem para o produto "${data.productName}", que sejam visualmente impactantes, criativos e que contem uma história, aumentando o desejo de compra. Estes prompts são para as imagens secundárias do anúncio.
+
+      INFORMAÇÕES FORNECIDAS:
+      - Marca do Produto: ${brandName}
+      ${colorInstruction}
+      - Imagem de referência do produto: A embalagem nas imagens geradas deve ser 100% idêntica à da referência.
+      ${logoInstruction}
+
+      ${brandSpecificInstructions}
+
+      DIRETRIZES CRIATIVAS ESTRATÉGICAS:
+      1.  **FIDELIDADE ABSOLUTA AO PRODUTO:** Esta é a regra mais importante. A embalagem do produto (formato, rótulo, cores, proporções) nas imagens geradas deve ser uma réplica exata da imagem de referência. A criatividade deve estar no cenário, iluminação e contexto, NUNCA na aparência do produto.
+      2.  **STORYTELLING VISUAL:** Crie cenas que demonstrem um benefício ou um contexto de uso.
+      3.  **ILUMINAÇÃO E ATMOSFERA:** Use descrições de iluminação que criem impacto.
+      4.  **COMPOSIÇÃO DINÂMICA:** Sugira ângulos e composições que fujam do comum.
+      5.  **CENÁRIOS REALISTAS E IMPACTANTES:** Os cenários devem ser relevantes e visualmente ricos.
+
+      REGRAS DE FORMATAÇÃO:
+      - Gere EXATAMENTE 5 prompts.
+      - Cada prompt deve ser apenas o texto descritivo para gerar a imagem, um por linha.
+      - NÃO adicione numeração, títulos como "Prompt 1:", ou qualquer texto introdutório/conclusivo.
+      - O tom deve ser profissional e evocar alta qualidade (use termos como "resolução 8k", "fotorrealista", "detalhes nítidos", "lentes de cinema").
+      - Responda TUDO em português do Brasil.
+    `;
+
+    parts.push({ text: basePrompt });
+    
     try {
-      const fallback = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: [{
-          role: "user",
-          parts: [
-            { text: ANALYSIS_PROMPT },
-            { inlineData: { mimeType, data: rawBase64 } },
-          ],
-        }],
+      const response = await ai.models.generateContent({
+          model: 'gemini-3-pro-preview',
+          contents: { parts: parts as any },
       });
-      productDescription = fallback.text?.trim() || "";
-      if (!productDescription) throw new Error("Sem descricao");
-    } catch {
-      throw new Error(
-        `Erro ao analisar a foto do produto: ${error.message || "Tente novamente."}`
-      );
+      
+      const resultText = response.text;
+      const creativePrompts = resultText ? resultText.split('\n').map(p => p.trim()).filter(p => p !== '') : [];
+
+      return [ultimatePrompt, ...creativePrompts];
+
+    } catch (error) {
+      console.error("Erro ao chamar a API Gemini:", error);
+      throw new Error("Ocorreu um erro ao gerar os prompts. Por favor, verifique o console e tente novamente.");
     }
-  }
+};
 
-  // ── ETAPA 2: Imagen 3 gera a imagem com o produto no cenario ──
-  const aspectHint = config.aspectRatio !== "1:1"
-    ? ` Proporcao da imagem: ${config.aspectRatio}.`
-    : "";
-
-  const imagenPrompt = `Fotografia profissional fotorrealista de alta resolucao.
-
-PRODUTO (deve aparecer com TOTAL FIDELIDADE a esta descricao):
-${productDescription}
-
-CENARIO DESEJADO:
-${config.prompt}
-
-INSTRUCOES:
-- O produto descrito acima deve ser o elemento central da imagem, com todos os detalhes fielmente representados (cores, rotulos, textos, formato, materiais).
-- O cenario ao redor deve ser "${config.prompt}" com iluminacao natural e profissional.
-- Composicao fotografica premium, foco nitido no produto, profundidade de campo.
-- Sombras e reflexos coerentes entre produto e cenario.${aspectHint}`;
-
-  try {
-    const response = await ai.models.generateImages({
-      model: "imagen-3.0-generate-002",
-      prompt: imagenPrompt,
-      config: {
-        numberOfImages: config.numberOfImages,
-        aspectRatio: config.aspectRatio,
-      },
-    });
-
-    const images: GeneratedImage[] = [];
-    if (response.generatedImages) {
-      for (const img of response.generatedImages) {
-        if (img.image?.imageBytes) {
-          images.push({
-            id: crypto.randomUUID(),
-            base64Data: img.image.imageBytes,
-            mimeType: "image/png",
-            prompt: config.prompt,
-            model: config.model,
-            aspectRatio: config.aspectRatio,
-            timestamp: Date.now(),
-          });
-        }
-      }
+export const generateSellerAdPrompt = async (context: string): Promise<string> => {
+    if (!process.env.API_KEY) {
+      throw new Error("A variável de ambiente API_KEY não está definida.");
     }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    if (images.length === 0) {
-      throw new Error("Imagen 3 nao gerou imagens. Tente outro cenario.");
+    const prompt = `
+      Você é um diretor de arte sênior e estrategista de marca, especialista em criar conceitos visuais que geram confiança e autoridade.
+      Sua missão é criar um único prompt de imagem, extremamente detalhado e evocativo, para ser usado em uma ferramenta de geração de imagem por IA.
+      
+      **CONTEXTO DO VENDEDOR:**
+      ${context}
+
+      **REGRAS:**
+      - Gere APENAS o texto do prompt em português.
+      - Foco em transmitir confiança, profissionalismo e autenticidade.
+      - Evite clichês de banco de imagens.
+      - Prompt único, sem introduções.
+    `;
+
+    try {
+      const response = await ai.models.generateContent({
+          model: 'gemini-3-pro-preview',
+          contents: prompt,
+      });
+      
+      return response.text?.trim() || "";
+
+    } catch (error) {
+      console.error("Erro ao chamar a API Gemini para o anúncio de credibilidade:", error);
+      throw new Error("Ocorreu um erro ao gerar o prompt do anúncio. Por favor, verifique o console e tente novamente.");
     }
-    return images;
-  } catch (error: any) {
-    console.error("Erro Imagen 3:", error);
-    if (error.message?.includes("SAFETY")) {
-      throw new Error("Bloqueado pelo filtro de seguranca. Tente outro prompt.");
-    }
-    throw new Error(
-      `Erro ao gerar: ${error.message || "Tente novamente."}`
-    );
-  }
 };

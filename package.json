@@ -1,9 +1,8 @@
 {
-  "name": "nano-banana-pro",
+  "name": "aquinobrasil-gerador-de-prompts-estratégicos",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.0.0",
   "type": "module",
-  "description": "Gerador de imagens IA com modos PRO e FLASH usando API do Gemini",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
