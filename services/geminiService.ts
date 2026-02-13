@@ -26,7 +26,7 @@ export const generateImages = async (
 };
 
 // ============================================================
-// GERAR DO ZERO — Imagen 3 generateImages
+// GERAR DO ZERO — Imagen 3
 // ============================================================
 const generateWithImagen = async (
   config: GenerationConfig
@@ -67,32 +67,28 @@ const generateWithImagen = async (
 
 // ============================================================
 // EDITAR COM REFERENCIA — 2 etapas
-//
-// Etapa 1: Gemini ANALISA a foto do produto (texto)
-//   → cria descricao ultra-detalhada do produto
-//
-// Etapa 2: Imagen 3 GERA a imagem nova
-//   → usando a descricao do produto + cenario desejado
-//
-// Assim usamos apenas APIs que funcionam com API Key normal
+// Etapa 1: Gemini analisa a foto → descricao detalhada (texto)
+// Etapa 2: Imagen 3 gera imagem com descricao + cenario
 // ============================================================
 
-const ANALYSIS_PROMPT = `Voce e um especialista em descricao de produtos para fotografia profissional.
+const ANALYSIS_MODELS = [
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-pro",
+  "gemini-2.0-flash",
+  "gemini-pro-vision",
+];
 
-Analise esta imagem de produto e crie uma descricao EXTREMAMENTE detalhada e precisa, incluindo:
+const ANALYSIS_PROMPT = `Analise esta foto de produto e descreva com MAXIMO detalhe:
+- Tipo de produto e categoria
+- Formato exato (cilindrico, retangular, garrafa, etc)
+- TODAS as cores com tons exatos
+- TODOS os textos visiveis (marca, nome, descricoes)
+- Material aparente (plastico, vidro, metal, papelao)
+- Detalhes do rotulo, logotipo, icones, padroes
+- Acabamento e texturas
 
-1. TIPO DE PRODUTO: o que e exatamente
-2. FORMATO/FORMA: formato exato da embalagem ou objeto (cilindrico, retangular, garrafa, caixa, etc.)
-3. DIMENSOES APARENTES: proporcoes relativas (largo, alto, fino, etc.)
-4. CORES: todas as cores visíveis, com tons exatos (vermelho escarlate, azul marinho, branco perolado, etc.)
-5. ROTULO/TEXTO: TODOS os textos visíveis no produto, marca, nome, descricoes
-6. MATERIAIS: aparencia do material (plastico brilhante, vidro fosco, metal escovado, papelao, etc.)
-7. DETALHES VISUAIS: logotipos, icones, padroes, texturas, acabamentos, selos, tampas, aberturas
-8. POSICAO/ANGULO: como o produto esta posicionado na foto
-
-A descricao deve ser tao detalhada que alguém conseguiria recriar visualmente o produto com total fidelidade apenas lendo o texto.
-
-Responda APENAS com a descricao em portugues. Sem introducoes nem conclusoes.`;
+Seja extremamente preciso. Responda APENAS com a descricao, sem introducao.`;
 
 const editWithReference = async (
   config: GenerationConfig
@@ -100,39 +96,19 @@ const editWithReference = async (
   const ai = getAI();
   const ref = config.referenceImage!;
 
-  // Extrair base64 puro
   const rawBase64 = ref.base64Data.includes(",")
     ? ref.base64Data.split(",")[1]
     : ref.base64Data;
   const mimeType = ref.mimeType || "image/jpeg";
 
-  // ── ETAPA 1: Gemini analisa a foto do produto ──
-  let productDescription: string;
+  // ── ETAPA 1: Analisar produto ──
+  let productDescription = "";
+  let analysisError = "";
 
-  try {
-    const analysisResponse = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
-      contents: [{
-        role: "user",
-        parts: [
-          { text: ANALYSIS_PROMPT },
-          { inlineData: { mimeType, data: rawBase64 } },
-        ],
-      }],
-    });
-
-    productDescription = analysisResponse.text?.trim() || "";
-
-    if (!productDescription) {
-      throw new Error("Gemini nao conseguiu analisar a imagem.");
-    }
-  } catch (error: any) {
-    console.error("Erro na analise:", error);
-
-    // Tenta modelo alternativo
+  for (const model of ANALYSIS_MODELS) {
     try {
-      const fallback = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+      const response = await ai.models.generateContent({
+        model,
         contents: [{
           role: "user",
           parts: [
@@ -141,33 +117,28 @@ const editWithReference = async (
           ],
         }],
       });
-      productDescription = fallback.text?.trim() || "";
-      if (!productDescription) throw new Error("Sem descricao");
-    } catch {
-      throw new Error(
-        `Erro ao analisar a foto do produto: ${error.message || "Tente novamente."}`
-      );
+
+      const text = response.text?.trim();
+      if (text && text.length > 20) {
+        productDescription = text;
+        break;
+      }
+    } catch (error: any) {
+      analysisError = `${model}: ${error.message}`;
+      console.warn(`Analise com ${model} falhou:`, error.message);
+      continue;
     }
   }
 
-  // ── ETAPA 2: Imagen 3 gera a imagem com o produto no cenario ──
-  const aspectHint = config.aspectRatio !== "1:1"
-    ? ` Proporcao da imagem: ${config.aspectRatio}.`
-    : "";
+  if (!productDescription) {
+    throw new Error(
+      `Nao foi possivel analisar a foto. Ultimo erro: ${analysisError}. Tente uma foto com melhor qualidade.`
+    );
+  }
 
-  const imagenPrompt = `Fotografia profissional fotorrealista de alta resolucao.
-
-PRODUTO (deve aparecer com TOTAL FIDELIDADE a esta descricao):
-${productDescription}
-
-CENARIO DESEJADO:
-${config.prompt}
-
-INSTRUCOES:
-- O produto descrito acima deve ser o elemento central da imagem, com todos os detalhes fielmente representados (cores, rotulos, textos, formato, materiais).
-- O cenario ao redor deve ser "${config.prompt}" com iluminacao natural e profissional.
-- Composicao fotografica premium, foco nitido no produto, profundidade de campo.
-- Sombras e reflexos coerentes entre produto e cenario.${aspectHint}`;
+  // ── ETAPA 2: Gerar com Imagen 3 ──
+  // Manter prompt curto para evitar erros
+  const imagenPrompt = `Fotografia profissional de produto em cenario. ${config.prompt}. O produto e: ${productDescription.substring(0, 800)}. Produto centralizado, iluminacao coerente, fotorrealista, alta resolucao.`;
 
   try {
     const response = await ai.models.generateImages({
@@ -201,12 +172,9 @@ INSTRUCOES:
     }
     return images;
   } catch (error: any) {
-    console.error("Erro Imagen 3:", error);
     if (error.message?.includes("SAFETY")) {
-      throw new Error("Bloqueado pelo filtro de seguranca. Tente outro prompt.");
+      throw new Error("Bloqueado pelo filtro de seguranca. Tente outro prompt ou foto.");
     }
-    throw new Error(
-      `Erro ao gerar: ${error.message || "Tente novamente."}`
-    );
+    throw new Error(`Erro ao gerar imagem: ${error.message}`);
   }
 };
