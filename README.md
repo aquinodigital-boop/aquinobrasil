@@ -1,20 +1,93 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# VideoComposer - Composição de Vídeos Curtos
 
-# Run and deploy your AI Studio app
+Aplicativo web que combina múltiplos vídeos curtos (5-10s) em um único vídeo final (25-30s) com transições profissionais. **100% processado no navegador** - seus vídeos nunca saem do seu dispositivo.
 
-This contains everything you need to run your app locally.
+## Funcionalidades
 
-View your app in AI Studio: https://ai.studio/apps/drive/1zNvg3ScIV0f1YfbXQ5P6fhRmxp1hmie6
+- **Upload drag-and-drop**: Arraste ou selecione até 10 vídeos
+- **Timeline interativa**: Reordene clipes arrastando
+- **10+ transições**: Fade, dissolve, wipe, slide, zoom e mais
+- **Formatos otimizados**: Reels, TikTok, Stories, Feed Instagram, YouTube Shorts
+- **100% privado**: Todo processamento acontece no browser via WebAssembly
+- **Preview integrado**: Assista ao resultado antes de baixar
+- **Download direto**: Baixe o vídeo final em MP4
 
-## Run Locally
+## Como Funciona
 
-**Prerequisites:**  Node.js
+O app usa **FFmpeg.wasm** - uma versão do FFmpeg compilada para WebAssembly que roda diretamente no navegador. Não há necessidade de backend, servidor ou instalação de software.
 
+1. Selecione seus vídeos curtos
+2. Organize a ordem na timeline
+3. Escolha o tipo de transição e configurações
+4. Clique em "Compor Vídeo"
+5. Baixe o resultado
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Tecnologias
+
+- **React 19** + TypeScript + Vite
+- **Tailwind CSS** para estilização
+- **FFmpeg.wasm** para processamento de vídeo no browser
+- **Canvas API** para geração de thumbnails
+- **HTMLVideoElement** para metadados de vídeo
+
+## Instalação e Execução
+
+```bash
+npm install
+npm run dev
+```
+
+O app estará disponível em `http://localhost:3000`.
+
+Para build de produção:
+
+```bash
+npm run build
+npm run preview
+```
+
+## Estrutura do Projeto
+
+```
+├── App.tsx                          # Componente principal com fluxo de 5 etapas
+├── types.ts                         # Tipos TypeScript
+├── index.html                       # HTML de entrada
+├── index.css                        # Estilos globais
+├── services/
+│   └── videoProcessor.ts            # Processamento FFmpeg.wasm no browser
+├── components/
+│   ├── VideoUploader.tsx            # Upload drag-and-drop
+│   ├── VideoTimeline.tsx            # Timeline de organização
+│   ├── TransitionSelector.tsx       # Seletor de transições
+│   ├── CompositionConfig.tsx        # Configurações de saída
+│   ├── ProcessingView.tsx           # Indicador de progresso
+│   ├── ResultView.tsx               # Player e download
+│   ├── StepIndicator.tsx            # Navegação por etapas
+│   └── icons/                       # Ícones SVG
+├── vite.config.ts                   # Configuração Vite com headers COOP/COEP
+├── tsconfig.json                    # Configuração TypeScript
+└── package.json                     # Dependências
+```
+
+## Transições Disponíveis
+
+| Transição | Descrição |
+|-----------|-----------|
+| Fade | Transição suave com fade in/out |
+| Dissolve | Dissolução gradual entre clipes |
+| Wipe Left/Right/Up/Down | Limpa em uma direção |
+| Slide Left/Right | Desliza para o lado |
+| Zoom Squeeze | Efeito de squeeze vertical |
+| Corte Seco | Sem transição |
+
+## Requisitos do Browser
+
+- Chrome 94+, Edge 94+, Firefox 103+, Safari 16.4+
+- Suporte a SharedArrayBuffer (habilitado via headers COOP/COEP)
+- Recomendado: 4GB+ RAM disponível para processamento
+
+## Notas Importantes
+
+- **Privacidade**: Nenhum vídeo é enviado para servidores. Tudo é processado localmente.
+- **Performance**: O tempo de processamento depende do hardware do dispositivo e do tamanho dos vídeos.
+- **Limite**: Para melhor performance no browser, a resolução de saída é limitada a 720p.
